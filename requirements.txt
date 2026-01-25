@@ -1,0 +1,27 @@
+# Real Estate OM Analysis Tool Dependencies
+
+# PDF parsing
+PyPDF2>=3.0.0
+pdfplumber>=0.10.0
+
+# Data analysis
+pandas>=2.0.0
+numpy>=1.24.0
+
+# HTTP requests for external data
+requests>=2.31.0
+aiohttp>=3.9.0
+
+# CLI interface
+rich>=13.0.0
+questionary>=2.0.0
+
+# Text processing
+python-dateutil>=2.8.0
+regex>=2023.0.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# JSON schema validation
+jsonschema>=4.20.0
