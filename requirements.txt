@@ -1,8 +1,10 @@
 # Real Estate OM Analysis Tool Dependencies
 
-# PDF parsing
-PyPDF2>=3.0.0
+# PDF parsing (multiple backends for better compatibility)
+# PyMuPDF is recommended - best for complex layouts
+pymupdf>=1.23.0
 pdfplumber>=0.10.0
+PyPDF2>=3.0.0
 
 # Data analysis
 pandas>=2.0.0
