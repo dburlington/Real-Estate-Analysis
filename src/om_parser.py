@@ -2,6 +2,7 @@
 
 import re
 import io
+import subprocess
 from pathlib import Path
 from typing import Optional
 from .models import (
@@ -30,20 +31,65 @@ try:
 except ImportError:
     PDF_LIBS['pypdf2'] = False
 
-PDF_SUPPORT = any(PDF_LIBS.values())
+# Check for OCR support
+try:
+    import pytesseract
+    from PIL import Image
+    PDF_LIBS['tesseract'] = True
+except ImportError:
+    PDF_LIBS['tesseract'] = False
+
+PDF_SUPPORT = any([PDF_LIBS.get('pymupdf'), PDF_LIBS.get('pdfplumber'), PDF_LIBS.get('pypdf2')])
 
 
 class PDFExtractor:
-    """Multi-backend PDF text extractor with fallbacks"""
+    """Multi-backend PDF text extractor with OCR fallback for scanned documents"""
 
     def __init__(self):
         self.extraction_method = None
         self.errors = []
+        self.is_scanned = False
 
     def extract(self, file_path: str) -> str:
-        """Extract text from PDF using best available method"""
+        """Extract text from PDF using best available method, with OCR fallback"""
         text = ""
         self.errors = []
+        self.is_scanned = False
+
+        # Try text-based extraction first
+        text = self._try_text_extraction(file_path)
+
+        if self._is_valid_extraction(text):
+            return text
+
+        # Text extraction failed - likely a scanned PDF
+        print("Standard text extraction failed. Attempting OCR...")
+        self.is_scanned = True
+
+        # Try OCR extraction
+        text = self._try_ocr_extraction(file_path)
+
+        if self._is_valid_extraction(text):
+            return text
+
+        # If we got some text but it didn't validate, return it anyway with a warning
+        if text and len(text) > 50:
+            print(f"Warning: Extracted text may be incomplete ({len(text)} chars)")
+            return text
+
+        # Complete failure
+        raise ValueError(
+            f"Failed to extract text from PDF.\n"
+            f"This appears to be a scanned PDF that requires OCR.\n"
+            f"Errors: {'; '.join(self.errors)}\n"
+            f"Available libraries: {PDF_LIBS}\n\n"
+            f"To enable OCR, install: pip install pytesseract pillow\n"
+            f"And install Tesseract: brew install tesseract (Mac) or apt install tesseract-ocr (Linux)"
+        )
+
+    def _try_text_extraction(self, file_path: str) -> str:
+        """Try all text-based extraction methods"""
+        text = ""
 
         # Try PyMuPDF first (best for complex layouts)
         if PDF_LIBS.get('pymupdf'):
@@ -52,6 +98,8 @@ class PDFExtractor:
                 if self._is_valid_extraction(text):
                     self.extraction_method = 'pymupdf'
                     return text
+                else:
+                    self.errors.append(f"PyMuPDF: only extracted {len(text)} chars")
             except Exception as e:
                 self.errors.append(f"PyMuPDF error: {e}")
 
@@ -62,6 +110,8 @@ class PDFExtractor:
                 if self._is_valid_extraction(text):
                     self.extraction_method = 'pdfplumber'
                     return text
+                else:
+                    self.errors.append(f"pdfplumber: only extracted {len(text)} chars")
             except Exception as e:
                 self.errors.append(f"pdfplumber error: {e}")
 
@@ -72,14 +122,36 @@ class PDFExtractor:
                 if self._is_valid_extraction(text):
                     self.extraction_method = 'pypdf2'
                     return text
+                else:
+                    self.errors.append(f"PyPDF2: only extracted {len(text)} chars")
             except Exception as e:
                 self.errors.append(f"PyPDF2 error: {e}")
 
-        if not text:
-            raise ValueError(
-                f"Failed to extract text from PDF. Errors: {'; '.join(self.errors)}\n"
-                f"Available PDF libraries: {PDF_LIBS}"
-            )
+        return text
+
+    def _try_ocr_extraction(self, file_path: str) -> str:
+        """Try OCR-based extraction for scanned PDFs"""
+        text = ""
+
+        # Method 1: PyMuPDF with built-in OCR (if tesseract available)
+        if PDF_LIBS.get('pymupdf'):
+            try:
+                text = self._extract_with_pymupdf_ocr(file_path)
+                if self._is_valid_extraction(text):
+                    self.extraction_method = 'pymupdf+ocr'
+                    return text
+            except Exception as e:
+                self.errors.append(f"PyMuPDF OCR error: {e}")
+
+        # Method 2: Convert to images and OCR with pytesseract
+        if PDF_LIBS.get('tesseract') and PDF_LIBS.get('pymupdf'):
+            try:
+                text = self._extract_with_tesseract(file_path)
+                if self._is_valid_extraction(text):
+                    self.extraction_method = 'tesseract'
+                    return text
+            except Exception as e:
+                self.errors.append(f"Tesseract error: {e}")
 
         return text
 
@@ -91,28 +163,105 @@ class PDFExtractor:
         for page_num in range(len(doc)):
             page = doc[page_num]
 
-            # Get text with better layout preservation
-            # Use "text" for simple extraction or "dict" for structured
-            blocks = page.get_text("dict", flags=fitz.TEXT_PRESERVE_WHITESPACE)
+            # Try multiple extraction methods and use the best result
+            texts = []
 
-            page_text = []
-            for block in blocks.get("blocks", []):
-                if block.get("type") == 0:  # Text block
-                    for line in block.get("lines", []):
-                        line_text = ""
-                        for span in line.get("spans", []):
-                            line_text += span.get("text", "")
-                        if line_text.strip():
-                            page_text.append(line_text)
+            # Method 1: Simple text extraction
+            try:
+                simple_text = page.get_text("text")
+                if simple_text:
+                    texts.append(simple_text)
+            except:
+                pass
 
-            # Also try simple text extraction as backup
-            simple_text = page.get_text("text")
+            # Method 2: Layout-preserving extraction
+            try:
+                layout_text = page.get_text("blocks")
+                if layout_text:
+                    block_texts = []
+                    for block in layout_text:
+                        if len(block) >= 5 and isinstance(block[4], str):
+                            block_texts.append(block[4])
+                    if block_texts:
+                        texts.append("\n".join(block_texts))
+            except:
+                pass
 
-            # Use whichever gives more content
-            if len("\n".join(page_text)) > len(simple_text) * 0.8:
-                text_parts.append("\n".join(page_text))
-            else:
-                text_parts.append(simple_text)
+            # Method 3: HTML extraction (sometimes works better)
+            try:
+                html_text = page.get_text("html")
+                # Strip HTML tags
+                clean_text = re.sub(r'<[^>]+>', ' ', html_text)
+                clean_text = re.sub(r'\s+', ' ', clean_text)
+                if len(clean_text) > 100:
+                    texts.append(clean_text)
+            except:
+                pass
+
+            # Use the longest extraction result
+            if texts:
+                best_text = max(texts, key=len)
+                text_parts.append(best_text)
+
+        doc.close()
+        return "\n\n".join(text_parts)
+
+    def _extract_with_pymupdf_ocr(self, file_path: str) -> str:
+        """Extract using PyMuPDF's OCR capabilities"""
+        doc = fitz.open(file_path)
+        text_parts = []
+
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+
+            # Try to get OCR text using textpage with OCR
+            try:
+                # Render page to high-res image for OCR
+                mat = fitz.Matrix(2.0, 2.0)  # 2x zoom for better OCR
+                pix = page.get_pixmap(matrix=mat)
+
+                # Try PyMuPDF's built-in OCR if available
+                try:
+                    tp = page.get_textpage_ocr(flags=fitz.TEXT_PRESERVE_WHITESPACE)
+                    text = page.get_text("text", textpage=tp)
+                    if text and len(text.strip()) > 20:
+                        text_parts.append(text)
+                        continue
+                except:
+                    pass
+
+            except Exception as e:
+                self.errors.append(f"OCR page {page_num} error: {e}")
+
+        doc.close()
+        return "\n\n".join(text_parts)
+
+    def _extract_with_tesseract(self, file_path: str) -> str:
+        """Extract using Tesseract OCR via pytesseract"""
+        import pytesseract
+        from PIL import Image
+
+        doc = fitz.open(file_path)
+        text_parts = []
+
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+
+            # Render page to image at high DPI for better OCR
+            mat = fitz.Matrix(300/72, 300/72)  # 300 DPI
+            pix = page.get_pixmap(matrix=mat)
+
+            # Convert to PIL Image
+            img_data = pix.tobytes("png")
+            img = Image.open(io.BytesIO(img_data))
+
+            # Run OCR
+            try:
+                text = pytesseract.image_to_string(img, config='--psm 1')
+                if text:
+                    text_parts.append(text)
+            except Exception as e:
+                self.errors.append(f"Tesseract page {page_num}: {e}")
 
         doc.close()
         return "\n\n".join(text_parts)
@@ -126,31 +275,40 @@ class PDFExtractor:
                 page_text_parts = []
 
                 # Extract tables first
-                tables = page.extract_tables()
-                for table in tables:
-                    if table:
-                        for row in table:
-                            if row:
-                                row_text = " | ".join(
-                                    str(cell) if cell else "" for cell in row
-                                )
-                                if row_text.strip():
-                                    page_text_parts.append(row_text)
+                try:
+                    tables = page.extract_tables()
+                    for table in tables:
+                        if table:
+                            for row in table:
+                                if row:
+                                    row_text = " | ".join(
+                                        str(cell) if cell else "" for cell in row
+                                    )
+                                    if row_text.strip() and row_text.strip() != "|":
+                                        page_text_parts.append(row_text)
+                except:
+                    pass
 
                 # Extract regular text with layout preservation
-                text = page.extract_text(
-                    layout=True,
-                    x_tolerance=3,
-                    y_tolerance=3
-                )
-                if text:
-                    page_text_parts.append(text)
+                try:
+                    text = page.extract_text(
+                        layout=True,
+                        x_tolerance=3,
+                        y_tolerance=3
+                    )
+                    if text and len(text.strip()) > 10:
+                        page_text_parts.append(text)
+                except:
+                    pass
 
                 # If layout extraction failed, try without layout
-                if not text:
-                    text = page.extract_text()
-                    if text:
-                        page_text_parts.append(text)
+                if not page_text_parts:
+                    try:
+                        text = page.extract_text()
+                        if text and len(text.strip()) > 10:
+                            page_text_parts.append(text)
+                    except:
+                        pass
 
                 if page_text_parts:
                     text_parts.append("\n".join(page_text_parts))
@@ -165,22 +323,33 @@ class PDFExtractor:
             reader = PyPDF2.PdfReader(f)
 
             for page in reader.pages:
-                text = page.extract_text()
-                if text:
-                    # Clean up common PyPDF2 artifacts
-                    text = re.sub(r'\s+', ' ', text)
-                    text = re.sub(r'(\w)-\s+(\w)', r'\1\2', text)  # Fix hyphenation
-                    text_parts.append(text)
+                try:
+                    text = page.extract_text()
+                    if text:
+                        # Clean up common PyPDF2 artifacts
+                        text = re.sub(r'\s+', ' ', text)
+                        text = re.sub(r'(\w)-\s+(\w)', r'\1\2', text)  # Fix hyphenation
+                        text_parts.append(text)
+                except:
+                    pass
 
         return "\n\n".join(text_parts)
 
     def _is_valid_extraction(self, text: str) -> bool:
         """Check if extraction produced usable text"""
-        if not text or len(text) < 100:
+        if not text or len(text) < 200:
+            return False
+
+        # Remove non-printable characters for analysis
+        printable_text = ''.join(c for c in text if c.isprintable() or c.isspace())
+
+        # Check ratio of printable to total - scanned PDFs often have garbage chars
+        if len(printable_text) < len(text) * 0.8:
             return False
 
         # Check for common OM keywords
-        keywords = ['price', 'unit', 'property', 'investment', 'cap', 'noi', 'rent']
+        keywords = ['price', 'unit', 'property', 'investment', 'cap', 'noi', 'rent',
+                   'income', 'expense', 'occupancy', 'sqft', 'square', 'building']
         text_lower = text.lower()
         matches = sum(1 for kw in keywords if kw in text_lower)
 
