@@ -344,13 +344,29 @@ class OMParser:
 
         return text.strip()
 
+    def _safe_float(self, value_str: str) -> Optional[float]:
+        """Safely convert string to float, returning None on failure"""
+        if not value_str:
+            return None
+        cleaned = value_str.replace(',', '').replace(' ', '').strip()
+        if not cleaned:
+            return None
+        try:
+            return float(cleaned)
+        except (ValueError, TypeError):
+            return None
+
     def _extract_number(self, text: str, pattern: str, multiplier: float = 1.0) -> Optional[float]:
         """Extract a number using a regex pattern"""
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             try:
-                value_str = match.group(1).replace(',', '').replace(' ', '')
-                value = float(value_str) * multiplier
+                value_str = match.group(1)
+                value = self._safe_float(value_str)
+                if value is None:
+                    return None
+
+                value *= multiplier
 
                 # Check for million indicator in the match context
                 context = text[match.start():min(match.end()+20, len(text))].lower()
@@ -359,7 +375,7 @@ class OMParser:
                         value *= 1_000_000
 
                 return value
-            except (ValueError, IndexError):
+            except (ValueError, IndexError, AttributeError):
                 pass
         return None
 
@@ -369,10 +385,11 @@ class OMParser:
         for match in re.finditer(pattern, text, re.IGNORECASE):
             try:
                 context = text[max(0, match.start()-30):match.start()]
-                value_str = match.group(1).replace(',', '').replace(' ', '')
-                value = float(value_str)
-                results.append((context.lower(), value))
-            except (ValueError, IndexError):
+                value_str = match.group(1)
+                value = self._safe_float(value_str)
+                if value is not None:
+                    results.append((context.lower(), value))
+            except (ValueError, IndexError, AttributeError):
                 pass
         return results
 
@@ -461,12 +478,13 @@ class OMParser:
         ]
         for pattern in price_patterns:
             price_match = re.search(pattern, text, re.IGNORECASE)
-            if price_match:
-                price = float(price_match.group(1).replace(',', ''))
-                if price_match.group(2) or price < 1000:
-                    price *= 1_000_000
-                financials.asking_price = price
-                break
+            if price_match and price_match.group(1):
+                price = self._safe_float(price_match.group(1))
+                if price is not None:
+                    if price_match.group(2) or price < 1000:
+                        price *= 1_000_000
+                    financials.asking_price = price
+                    break
 
         financials.price_per_unit = self._extract_number(text, self.PATTERNS['price_per_unit'])
         financials.price_per_sqft = self._extract_number(text, self.PATTERNS['price_per_sqft'])
@@ -477,10 +495,12 @@ class OMParser:
             text, re.IGNORECASE
         )
         for prefix, rate in cap_matches:
-            rate_val = float(rate)
+            rate_val = self._safe_float(rate)
+            if rate_val is None:
+                continue
             if rate_val > 1:  # Convert from percentage
                 rate_val /= 100
-            if rate_val > 0.15:  # Sanity check - cap rates typically < 15%
+            if rate_val > 0.15 or rate_val < 0.01:  # Sanity check - cap rates typically 1-15%
                 continue
             prefix_lower = (prefix or '').lower()
             if any(p in prefix_lower for p in ['pro', 'stabilized', 'exit']):
@@ -496,7 +516,9 @@ class OMParser:
             text, re.IGNORECASE
         )
         for prefix, noi in noi_matches:
-            noi_val = float(noi.replace(',', ''))
+            noi_val = self._safe_float(noi)
+            if noi_val is None:
+                continue
             if noi_val < 1000:  # Likely in thousands
                 noi_val *= 1000
             prefix_lower = (prefix or '').lower()
@@ -555,12 +577,13 @@ class OMParser:
         ]
         for pattern in loan_patterns:
             loan_match = re.search(pattern, text, re.IGNORECASE)
-            if loan_match:
-                loan = float(loan_match.group(1).replace(',', ''))
-                if loan_match.group(2) or loan < 1000:
-                    loan *= 1_000_000
-                terms.loan_amount = loan
-                break
+            if loan_match and loan_match.group(1):
+                loan = self._safe_float(loan_match.group(1))
+                if loan is not None:
+                    if loan_match.group(2) or loan < 1000:
+                        loan *= 1_000_000
+                    terms.loan_amount = loan
+                    break
 
         ltv = self._extract_number(text, self.PATTERNS['ltv'])
         if ltv:
