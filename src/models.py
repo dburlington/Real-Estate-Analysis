@@ -84,6 +84,38 @@ class DealTerms:
 
 
 @dataclass
+class SponsorFees:
+    """Sponsor/GP fee structure"""
+    # Upfront fees
+    acquisition_fee: Optional[float] = None  # % of purchase price
+    acquisition_fee_flat: Optional[float] = None  # Flat dollar amount
+    financing_fee: Optional[float] = None  # % of loan amount
+
+    # Ongoing fees
+    asset_management_fee: Optional[float] = None  # % of EGI or equity annually
+    property_management_fee: Optional[float] = None  # % of EGI
+    construction_management_fee: Optional[float] = None  # % of capex/renovation budget
+
+    # Exit fees
+    disposition_fee: Optional[float] = None  # % of sale price
+    refinance_fee: Optional[float] = None  # % of new loan amount
+
+    # Promote/Carried Interest (already captured in profit_split, but detail here)
+    promote_tier_1: Optional[str] = None  # e.g., "20% above 8% IRR"
+    promote_tier_2: Optional[str] = None  # e.g., "30% above 15% IRR"
+
+    # Other fees
+    investor_servicing_fee: Optional[float] = None  # Annual flat or %
+    reporting_fee: Optional[float] = None
+    other_fees: list[tuple[str, float]] = field(default_factory=list)  # (name, amount/%)
+
+    # Calculated totals
+    total_upfront_fees_pct: Optional[float] = None
+    total_annual_fees_pct: Optional[float] = None
+    estimated_total_fees_over_hold: Optional[float] = None
+
+
+@dataclass
 class MarketData:
     """External market data for the property location"""
     market_rent_psf: Optional[float] = None
@@ -123,6 +155,7 @@ class OMAnalysis:
     financials: FinancialMetrics
     deal_terms: DealTerms
     market_data: MarketData
+    fees: SponsorFees = field(default_factory=SponsorFees)
     pros: list[Finding] = field(default_factory=list)
     cons: list[Finding] = field(default_factory=list)
     red_flags: list[Finding] = field(default_factory=list)

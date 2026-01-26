@@ -242,6 +242,64 @@ def display_market_data(console, analysis: OMAnalysis):
         print()
 
 
+def display_fee_summary(console, analysis: OMAnalysis):
+    """Display sponsor fee structure"""
+    fees = analysis.fees
+
+    # Check if any fees were found
+    has_fees = any([
+        fees.acquisition_fee, fees.asset_management_fee,
+        fees.property_management_fee, fees.construction_management_fee,
+        fees.disposition_fee, fees.refinance_fee
+    ])
+
+    if not has_fees:
+        return
+
+    if console:
+        table = Table(title="Sponsor Fee Structure", box=box.ROUNDED)
+        table.add_column("Fee Type", style="cyan")
+        table.add_column("Rate", style="white")
+        table.add_column("Industry Benchmark", style="dim")
+
+        if fees.acquisition_fee:
+            table.add_row("Acquisition Fee", f"{fees.acquisition_fee:.1%}", "0.5-2.0%")
+        if fees.asset_management_fee:
+            table.add_row("Asset Management Fee", f"{fees.asset_management_fee:.1%}/yr", "1.0-2.0%/yr")
+        if fees.property_management_fee:
+            table.add_row("Property Management Fee", f"{fees.property_management_fee:.1%}", "3-6%")
+        if fees.construction_management_fee:
+            table.add_row("Construction Mgmt Fee", f"{fees.construction_management_fee:.1%}", "3-5%")
+        if fees.disposition_fee:
+            table.add_row("Disposition Fee", f"{fees.disposition_fee:.1%}", "0.5-1.5%")
+        if fees.refinance_fee:
+            table.add_row("Refinance Fee", f"{fees.refinance_fee:.1%}", "0.25-1.0%")
+
+        if fees.estimated_total_fees_over_hold:
+            hold = analysis.deal_terms.hold_period_years or 5
+            table.add_row(
+                f"Est. Total Fees ({hold}yr)",
+                f"{fees.estimated_total_fees_over_hold:.1%}",
+                "15-25%"
+            )
+
+        console.print(table)
+        console.print()
+    else:
+        print("--- Sponsor Fee Structure ---")
+        if fees.acquisition_fee:
+            print(f"Acquisition Fee: {fees.acquisition_fee:.1%} (benchmark: 0.5-2%)")
+        if fees.asset_management_fee:
+            print(f"Asset Management Fee: {fees.asset_management_fee:.1%}/yr (benchmark: 1-2%/yr)")
+        if fees.property_management_fee:
+            print(f"Property Management Fee: {fees.property_management_fee:.1%} (benchmark: 3-6%)")
+        if fees.disposition_fee:
+            print(f"Disposition Fee: {fees.disposition_fee:.1%} (benchmark: 0.5-1.5%)")
+        if fees.estimated_total_fees_over_hold:
+            print(f"Est. Total Fees: {fees.estimated_total_fees_over_hold:.1%} (benchmark: 15-25%)")
+        print()
+
+
 def display_findings(console, findings: list[Finding], title: str, style: str):
     """Display findings (pros, cons, or red flags)"""
     if not findings:
@@ -402,6 +460,7 @@ def main():
 
         display_property_summary(console, analysis)
         display_financial_summary(console, analysis)
+        display_fee_summary(console, analysis)
         display_market_data(console, analysis)
 
         # Display findings

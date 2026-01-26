@@ -83,6 +83,18 @@ Preferred Return: 8%
 Profit Split: 70/30 (LP/GP)
 
 ================================================================================
+                              SPONSOR FEE STRUCTURE
+================================================================================
+
+Acquisition Fee: 1.0% of purchase price
+Asset Management Fee: 1.5% of equity annually
+Property Management Fee: 4.0% of EGI
+Disposition Fee: 1.0% of sale price
+
+All fees are standard market rates for institutional-quality sponsorship.
+Sponsor is co-investing $500,000 of personal capital alongside LPs.
+
+================================================================================
                               PROPERTY AMENITIES
 ================================================================================
 

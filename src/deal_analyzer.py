@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 from .models import (
-    OMAnalysis, Finding, RiskLevel, PropertyType, MarketData
+    OMAnalysis, Finding, RiskLevel, PropertyType, MarketData, SponsorFees
 )
 from .market_data import MarketDataFetcher
 
@@ -63,6 +63,52 @@ class DealAnalyzer:
         'ppu_tertiary': 125000,  # Midwest, smaller markets
     }
 
+    # Industry standard fee benchmarks (as of 2024)
+    # Source: NCREIF, Preqin, industry surveys
+    FEE_BENCHMARKS = {
+        # Acquisition fees - typically 0.5% to 2% of purchase price
+        'acquisition_fee_low': 0.005,  # 0.5% - investor-friendly
+        'acquisition_fee_market': 0.01,  # 1.0% - market standard
+        'acquisition_fee_high': 0.02,  # 2.0% - above market
+        'acquisition_fee_red_flag': 0.03,  # 3.0% - excessive
+
+        # Asset management fees - typically 1% to 2% of equity or EGI annually
+        'asset_mgmt_fee_low': 0.01,  # 1.0% - investor-friendly
+        'asset_mgmt_fee_market': 0.015,  # 1.5% - market standard
+        'asset_mgmt_fee_high': 0.02,  # 2.0% - above market
+        'asset_mgmt_fee_red_flag': 0.025,  # 2.5% - excessive
+
+        # Property management fees - 3% to 6% of EGI
+        'property_mgmt_fee_low': 0.03,  # 3% - institutional
+        'property_mgmt_fee_market': 0.05,  # 5% - market standard
+        'property_mgmt_fee_high': 0.07,  # 7% - above market
+        'property_mgmt_fee_red_flag': 0.10,  # 10% - excessive
+
+        # Construction management fees - 3% to 5% of project costs
+        'construction_mgmt_fee_low': 0.03,  # 3% - investor-friendly
+        'construction_mgmt_fee_market': 0.05,  # 5% - market standard
+        'construction_mgmt_fee_high': 0.08,  # 8% - above market
+        'construction_mgmt_fee_red_flag': 0.10,  # 10% - excessive
+
+        # Disposition fees - 0.5% to 1.5% of sale price
+        'disposition_fee_low': 0.005,  # 0.5% - investor-friendly
+        'disposition_fee_market': 0.01,  # 1.0% - market standard
+        'disposition_fee_high': 0.015,  # 1.5% - above market
+        'disposition_fee_red_flag': 0.02,  # 2.0% - excessive
+
+        # Refinance fees - 0.25% to 1% of loan amount
+        'refinance_fee_low': 0.0025,  # 0.25% - investor-friendly
+        'refinance_fee_market': 0.005,  # 0.5% - market standard
+        'refinance_fee_high': 0.01,  # 1.0% - above market
+        'refinance_fee_red_flag': 0.015,  # 1.5% - excessive
+
+        # Total fees over hold (as % of equity)
+        'total_fees_low': 0.15,  # 15% of equity over hold - lean
+        'total_fees_market': 0.25,  # 25% - market standard
+        'total_fees_high': 0.35,  # 35% - fee heavy
+        'total_fees_red_flag': 0.45,  # 45% - excessive
+    }
+
     # Current market interest rate benchmark
     CURRENT_MARKET_RATE = 0.065  # 6.5% as of late 2024
 
@@ -91,6 +137,8 @@ class DealAnalyzer:
         self._analyze_deal_structure(om_analysis)
         self._analyze_market_conditions(om_analysis)
         self._analyze_value_add_potential(om_analysis)
+        self._analyze_fees(om_analysis)
+        self._analyze_external_comparisons(om_analysis)
 
         # Calculate overall score and recommendation
         self._calculate_overall_score(om_analysis)
@@ -715,6 +763,384 @@ class DealAnalyzer:
                 metric_name="Value-Add Opportunities",
                 actual_value=str(len(opportunities))
             ))
+
+    def _analyze_fees(self, analysis: OMAnalysis):
+        """Analyze sponsor fees against industry benchmarks"""
+        fees = analysis.fees
+        benchmarks = self.FEE_BENCHMARKS
+
+        # Track total fee load for summary
+        total_upfront_pct = 0
+        total_annual_pct = 0
+        fee_issues = []
+
+        # Acquisition Fee Analysis
+        if fees.acquisition_fee:
+            acq = fees.acquisition_fee
+            total_upfront_pct += acq
+
+            if acq >= benchmarks['acquisition_fee_red_flag']:
+                analysis.red_flags.append(Finding(
+                    category="Fees",
+                    description="Excessive acquisition fee",
+                    details=f"Acquisition fee of {acq:.1%} significantly exceeds industry standard of 1-2%. This fee alone reduces investor returns substantially.",
+                    risk_level=RiskLevel.HIGH,
+                    metric_name="Acquisition Fee",
+                    actual_value=f"{acq:.1%}",
+                    benchmark_value=f"{benchmarks['acquisition_fee_market']:.1%} (market)"
+                ))
+                fee_issues.append("acquisition fee")
+            elif acq >= benchmarks['acquisition_fee_high']:
+                analysis.cons.append(Finding(
+                    category="Fees",
+                    description="Above-market acquisition fee",
+                    details=f"Acquisition fee of {acq:.1%} is above the industry standard of 1%",
+                    risk_level=RiskLevel.MEDIUM,
+                    metric_name="Acquisition Fee",
+                    actual_value=f"{acq:.1%}",
+                    benchmark_value=f"{benchmarks['acquisition_fee_market']:.1%} (market)"
+                ))
+            elif acq <= benchmarks['acquisition_fee_low']:
+                analysis.pros.append(Finding(
+                    category="Fees",
+                    description="Low acquisition fee",
+                    details=f"Acquisition fee of {acq:.1%} is below market average, benefiting investors",
+                    risk_level=RiskLevel.LOW,
+                    metric_name="Acquisition Fee",
+                    actual_value=f"{acq:.1%}",
+                    benchmark_value=f"{benchmarks['acquisition_fee_market']:.1%} (market)"
+                ))
+
+        # Asset Management Fee Analysis
+        if fees.asset_management_fee:
+            am = fees.asset_management_fee
+            total_annual_pct += am
+
+            if am >= benchmarks['asset_mgmt_fee_red_flag']:
+                analysis.red_flags.append(Finding(
+                    category="Fees",
+                    description="Excessive asset management fee",
+                    details=f"Annual asset management fee of {am:.1%} is well above the industry standard of 1-2%. Over a 5-year hold, this significantly erodes returns.",
+                    risk_level=RiskLevel.HIGH,
+                    metric_name="Asset Management Fee",
+                    actual_value=f"{am:.1%}/year",
+                    benchmark_value=f"{benchmarks['asset_mgmt_fee_market']:.1%}/year (market)"
+                ))
+                fee_issues.append("asset management fee")
+            elif am >= benchmarks['asset_mgmt_fee_high']:
+                analysis.cons.append(Finding(
+                    category="Fees",
+                    description="Above-market asset management fee",
+                    details=f"Asset management fee of {am:.1%} annually exceeds typical institutional rates",
+                    risk_level=RiskLevel.MEDIUM,
+                    metric_name="Asset Management Fee",
+                    actual_value=f"{am:.1%}/year",
+                    benchmark_value=f"{benchmarks['asset_mgmt_fee_market']:.1%}/year (market)"
+                ))
+            elif am <= benchmarks['asset_mgmt_fee_low']:
+                analysis.pros.append(Finding(
+                    category="Fees",
+                    description="Competitive asset management fee",
+                    details=f"Asset management fee of {am:.1%} is at or below institutional rates",
+                    risk_level=RiskLevel.LOW,
+                    metric_name="Asset Management Fee",
+                    actual_value=f"{am:.1%}/year",
+                    benchmark_value=f"{benchmarks['asset_mgmt_fee_market']:.1%}/year (market)"
+                ))
+
+        # Property Management Fee Analysis
+        if fees.property_management_fee:
+            pm = fees.property_management_fee
+            total_annual_pct += pm
+
+            if pm >= benchmarks['property_mgmt_fee_red_flag']:
+                analysis.red_flags.append(Finding(
+                    category="Fees",
+                    description="Excessive property management fee",
+                    details=f"Property management fee of {pm:.1%} is far above the industry standard of 3-6%",
+                    risk_level=RiskLevel.HIGH,
+                    metric_name="Property Management Fee",
+                    actual_value=f"{pm:.1%}",
+                    benchmark_value=f"{benchmarks['property_mgmt_fee_market']:.1%} (market)"
+                ))
+            elif pm >= benchmarks['property_mgmt_fee_high']:
+                analysis.cons.append(Finding(
+                    category="Fees",
+                    description="Above-market property management fee",
+                    details=f"Property management fee of {pm:.1%} is higher than typical institutional deals",
+                    risk_level=RiskLevel.MEDIUM,
+                    metric_name="Property Management Fee",
+                    actual_value=f"{pm:.1%}",
+                    benchmark_value=f"{benchmarks['property_mgmt_fee_market']:.1%} (market)"
+                ))
+            elif pm <= benchmarks['property_mgmt_fee_low']:
+                analysis.pros.append(Finding(
+                    category="Fees",
+                    description="Low property management fee",
+                    details=f"Property management fee of {pm:.1%} indicates institutional-quality management rates",
+                    risk_level=RiskLevel.LOW,
+                    metric_name="Property Management Fee",
+                    actual_value=f"{pm:.1%}",
+                    benchmark_value=f"{benchmarks['property_mgmt_fee_market']:.1%} (market)"
+                ))
+
+        # Construction Management Fee Analysis
+        if fees.construction_management_fee:
+            cm = fees.construction_management_fee
+
+            if cm >= benchmarks['construction_mgmt_fee_red_flag']:
+                analysis.red_flags.append(Finding(
+                    category="Fees",
+                    description="Excessive construction management fee",
+                    details=f"Construction management fee of {cm:.1%} far exceeds market standard of 3-5%",
+                    risk_level=RiskLevel.HIGH,
+                    metric_name="Construction Mgmt Fee",
+                    actual_value=f"{cm:.1%}",
+                    benchmark_value=f"{benchmarks['construction_mgmt_fee_market']:.1%} (market)"
+                ))
+            elif cm >= benchmarks['construction_mgmt_fee_high']:
+                analysis.cons.append(Finding(
+                    category="Fees",
+                    description="Above-market construction management fee",
+                    details=f"Construction management fee of {cm:.1%} is above typical rates",
+                    risk_level=RiskLevel.MEDIUM,
+                    metric_name="Construction Mgmt Fee",
+                    actual_value=f"{cm:.1%}",
+                    benchmark_value=f"{benchmarks['construction_mgmt_fee_market']:.1%} (market)"
+                ))
+
+        # Disposition Fee Analysis
+        if fees.disposition_fee:
+            disp = fees.disposition_fee
+
+            if disp >= benchmarks['disposition_fee_red_flag']:
+                analysis.red_flags.append(Finding(
+                    category="Fees",
+                    description="Excessive disposition fee",
+                    details=f"Disposition fee of {disp:.1%} is double the industry standard. At exit, this significantly reduces investor proceeds.",
+                    risk_level=RiskLevel.HIGH,
+                    metric_name="Disposition Fee",
+                    actual_value=f"{disp:.1%}",
+                    benchmark_value=f"{benchmarks['disposition_fee_market']:.1%} (market)"
+                ))
+            elif disp >= benchmarks['disposition_fee_high']:
+                analysis.cons.append(Finding(
+                    category="Fees",
+                    description="Above-market disposition fee",
+                    details=f"Disposition fee of {disp:.1%} exceeds typical rates of 0.5-1%",
+                    risk_level=RiskLevel.MEDIUM,
+                    metric_name="Disposition Fee",
+                    actual_value=f"{disp:.1%}",
+                    benchmark_value=f"{benchmarks['disposition_fee_market']:.1%} (market)"
+                ))
+            elif disp <= benchmarks['disposition_fee_low']:
+                analysis.pros.append(Finding(
+                    category="Fees",
+                    description="Low disposition fee",
+                    details=f"Disposition fee of {disp:.1%} is investor-friendly",
+                    risk_level=RiskLevel.LOW,
+                    metric_name="Disposition Fee",
+                    actual_value=f"{disp:.1%}",
+                    benchmark_value=f"{benchmarks['disposition_fee_market']:.1%} (market)"
+                ))
+
+        # Calculate estimated total fees over hold period
+        hold_years = analysis.deal_terms.hold_period_years or 5
+        if total_upfront_pct > 0 or total_annual_pct > 0:
+            # Rough estimate of total fee load as % of equity
+            total_fee_estimate = total_upfront_pct + (total_annual_pct * hold_years)
+
+            # Store in fees object
+            fees.total_upfront_fees_pct = total_upfront_pct
+            fees.total_annual_fees_pct = total_annual_pct
+            fees.estimated_total_fees_over_hold = total_fee_estimate
+
+            if total_fee_estimate >= benchmarks['total_fees_red_flag']:
+                analysis.red_flags.append(Finding(
+                    category="Fees",
+                    description="Total fee load is excessive",
+                    details=f"Estimated total fees of {total_fee_estimate:.1%} of equity over {hold_years} years significantly exceeds industry norms. Consider how this impacts your net returns.",
+                    risk_level=RiskLevel.HIGH,
+                    metric_name="Total Fee Load",
+                    actual_value=f"{total_fee_estimate:.1%}",
+                    benchmark_value=f"<{benchmarks['total_fees_market']:.0%}"
+                ))
+            elif total_fee_estimate >= benchmarks['total_fees_high']:
+                analysis.cons.append(Finding(
+                    category="Fees",
+                    description="Above-average total fee load",
+                    details=f"Total estimated fees of {total_fee_estimate:.1%} over the hold period are above market average",
+                    risk_level=RiskLevel.MEDIUM,
+                    metric_name="Total Fee Load",
+                    actual_value=f"{total_fee_estimate:.1%}",
+                    benchmark_value=f"<{benchmarks['total_fees_market']:.0%}"
+                ))
+            elif total_fee_estimate <= benchmarks['total_fees_low']:
+                analysis.pros.append(Finding(
+                    category="Fees",
+                    description="Lean fee structure",
+                    details=f"Total estimated fees of {total_fee_estimate:.1%} over hold period indicate an investor-aligned sponsor",
+                    risk_level=RiskLevel.LOW,
+                    metric_name="Total Fee Load",
+                    actual_value=f"{total_fee_estimate:.1%}",
+                    benchmark_value=f"Market avg: {benchmarks['total_fees_market']:.0%}"
+                ))
+
+        # Check for fee disclosure issues
+        has_any_fees = any([
+            fees.acquisition_fee, fees.asset_management_fee,
+            fees.property_management_fee, fees.disposition_fee
+        ])
+        if not has_any_fees:
+            analysis.cons.append(Finding(
+                category="Fees",
+                description="Fee structure not disclosed",
+                details="No sponsor fees were identified in the OM. Request a complete fee schedule before investing.",
+                risk_level=RiskLevel.MEDIUM,
+                metric_name="Fee Disclosure"
+            ))
+
+    def _analyze_external_comparisons(self, analysis: OMAnalysis):
+        """Compare deal metrics against external market data and benchmarks"""
+        market = analysis.market_data
+        fin = analysis.financials
+        prop = analysis.property
+
+        # Price per unit comparison for multifamily
+        if prop.property_type == PropertyType.MULTIFAMILY and fin.price_per_unit:
+            ppu = fin.price_per_unit
+            state = prop.state
+
+            # Determine market tier based on state
+            gateway_states = ['CA', 'NY', 'MA', 'DC']
+            primary_states = ['WA', 'CO', 'FL', 'IL']
+            secondary_states = ['TX', 'GA', 'NC', 'TN', 'AZ']
+
+            if state in gateway_states:
+                tier = 'Gateway'
+                benchmark = self.THRESHOLDS['ppu_gateway']
+            elif state in primary_states:
+                tier = 'Primary'
+                benchmark = self.THRESHOLDS['ppu_primary']
+            elif state in secondary_states:
+                tier = 'Secondary'
+                benchmark = self.THRESHOLDS['ppu_secondary']
+            else:
+                tier = 'Tertiary'
+                benchmark = self.THRESHOLDS['ppu_tertiary']
+
+            spread = (ppu - benchmark) / benchmark
+
+            if spread > 0.30:  # 30%+ above market
+                analysis.cons.append(Finding(
+                    category="Valuation",
+                    description=f"Price per unit above {tier} market average",
+                    details=f"At ${ppu:,.0f}/unit, this is {spread:.0%} above typical {tier} market pricing of ${benchmark:,.0f}/unit",
+                    risk_level=RiskLevel.MEDIUM,
+                    metric_name="Price/Unit vs Market",
+                    actual_value=f"${ppu:,.0f}",
+                    benchmark_value=f"${benchmark:,.0f} ({tier})"
+                ))
+            elif spread < -0.20:  # 20%+ below market
+                analysis.pros.append(Finding(
+                    category="Valuation",
+                    description=f"Price per unit below {tier} market average",
+                    details=f"At ${ppu:,.0f}/unit, this is {abs(spread):.0%} below typical {tier} market pricing, indicating potential value",
+                    risk_level=RiskLevel.LOW,
+                    metric_name="Price/Unit vs Market",
+                    actual_value=f"${ppu:,.0f}",
+                    benchmark_value=f"${benchmark:,.0f} ({tier})"
+                ))
+
+        # Vacancy comparison
+        if fin.current_occupancy and market.market_vacancy_rate:
+            property_vacancy = 1 - fin.current_occupancy
+            market_vacancy = market.market_vacancy_rate
+            vacancy_spread = property_vacancy - market_vacancy
+
+            if vacancy_spread > 0.05:  # 5%+ higher vacancy than market
+                analysis.cons.append(Finding(
+                    category="Market Comparison",
+                    description="Vacancy above market average",
+                    details=f"Property vacancy of {property_vacancy:.1%} is {vacancy_spread:.1%} higher than market average of {market_vacancy:.1%}",
+                    risk_level=RiskLevel.MEDIUM,
+                    metric_name="Vacancy vs Market",
+                    actual_value=f"{property_vacancy:.1%}",
+                    benchmark_value=f"{market_vacancy:.1%} (market)"
+                ))
+            elif vacancy_spread < -0.03:  # 3%+ lower vacancy than market
+                analysis.pros.append(Finding(
+                    category="Market Comparison",
+                    description="Vacancy below market average",
+                    details=f"Property vacancy of {property_vacancy:.1%} outperforms market average of {market_vacancy:.1%}",
+                    risk_level=RiskLevel.LOW,
+                    metric_name="Vacancy vs Market",
+                    actual_value=f"{property_vacancy:.1%}",
+                    benchmark_value=f"{market_vacancy:.1%} (market)"
+                ))
+
+        # Supply pipeline warning
+        if market.new_supply_units and market.new_supply_units > 0:
+            if prop.total_units:
+                supply_ratio = market.new_supply_units / prop.total_units
+                if supply_ratio > 5:  # New supply is 5x+ the property size
+                    analysis.cons.append(Finding(
+                        category="Market Comparison",
+                        description="Significant new supply in pipeline",
+                        details=f"Approximately {market.new_supply_units:,} new units are under construction in this market, which may pressure rents and occupancy",
+                        risk_level=RiskLevel.MEDIUM,
+                        metric_name="Supply Pipeline",
+                        actual_value=f"{market.new_supply_units:,} units"
+                    ))
+
+        # Income/affordability check
+        if market.median_household_income and fin.average_rent:
+            annual_rent = fin.average_rent * 12
+            rent_to_income = annual_rent / market.median_household_income
+
+            if rent_to_income > 0.35:  # Rent is >35% of median income
+                analysis.cons.append(Finding(
+                    category="Market Comparison",
+                    description="Rent may be unaffordable for median income",
+                    details=f"At ${fin.average_rent:,.0f}/month, rent represents {rent_to_income:.0%} of the area's median household income (${market.median_household_income:,.0f}), potentially limiting tenant pool",
+                    risk_level=RiskLevel.MEDIUM,
+                    metric_name="Rent/Income Ratio",
+                    actual_value=f"{rent_to_income:.0%}",
+                    benchmark_value="<30%"
+                ))
+            elif rent_to_income < 0.25:  # Rent is <25% of median income
+                analysis.pros.append(Finding(
+                    category="Market Comparison",
+                    description="Rents affordable relative to local incomes",
+                    details=f"Rent represents only {rent_to_income:.0%} of area median income, indicating room for rent growth and stable tenant demand",
+                    risk_level=RiskLevel.LOW,
+                    metric_name="Rent/Income Ratio",
+                    actual_value=f"{rent_to_income:.0%}",
+                    benchmark_value="<30%"
+                ))
+
+        # Walk score / location quality
+        if market.walk_score:
+            if market.walk_score >= 70:
+                analysis.pros.append(Finding(
+                    category="Location",
+                    description="Excellent walkability",
+                    details=f"Walk score of {market.walk_score} indicates a very walkable location with nearby amenities",
+                    risk_level=RiskLevel.LOW,
+                    metric_name="Walk Score",
+                    actual_value=str(market.walk_score),
+                    benchmark_value=">70 (very walkable)"
+                ))
+            elif market.walk_score < 40:
+                analysis.cons.append(Finding(
+                    category="Location",
+                    description="Car-dependent location",
+                    details=f"Walk score of {market.walk_score} indicates a car-dependent location, which may limit tenant appeal",
+                    risk_level=RiskLevel.LOW,
+                    metric_name="Walk Score",
+                    actual_value=str(market.walk_score),
+                    benchmark_value=">50 (somewhat walkable)"
+                ))
 
     def _calculate_overall_score(self, analysis: OMAnalysis):
         """Calculate overall deal score and recommendation"""

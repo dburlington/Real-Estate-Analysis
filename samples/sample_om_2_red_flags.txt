@@ -83,6 +83,19 @@ Preferred Return: 6%
 Profit Split: 50/50 (LP/GP)
 
 ================================================================================
+                              SPONSOR FEE STRUCTURE
+================================================================================
+
+Acquisition Fee: 3.0% of purchase price
+Asset Management Fee: 2.5% of equity annually
+Property Management Fee: 8.0% of EGI (managed by sponsor affiliate)
+Construction Management Fee: 10% of renovation budget
+Disposition Fee: 2.0% of sale price
+Refinance Fee: 1.5% of new loan amount
+
+Note: Fees are non-negotiable and apply regardless of investment performance.
+
+================================================================================
                               PROPERTY CONDITION
 ================================================================================
 

@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 from .models import (
-    PropertyDetails, FinancialMetrics, DealTerms,
+    PropertyDetails, FinancialMetrics, DealTerms, SponsorFees,
     PropertyType, OMAnalysis, MarketData
 )
 
@@ -398,6 +398,15 @@ class OMParser:
         'preferred_return': r'(?:preferred\s*return|pref(?:erred)?\.?\s*return|pref)[:\s]*([\d.]+)\s*%?',
         'profit_split': r'(?:profit\s*split|waterfall|split|promote)[:\s]*(\d+)\s*/\s*(\d+)',
         'hold_period': r'(?:hold\s*period|holding\s*period|investment\s*period|target\s*hold)[:\s]*(\d+)\s*(?:years?|yrs?)?',
+
+        # Fee patterns
+        'acquisition_fee': r'(?:acquisition\s*fee|acq\.?\s*fee|closing\s*fee)[:\s]*([\d.]+)\s*%?',
+        'asset_management_fee': r'(?:asset\s*management\s*fee|am\s*fee|management\s*fee)[:\s]*([\d.]+)\s*%?',
+        'property_management_fee': r'(?:property\s*management|pm\s*fee)[:\s]*([\d.]+)\s*%?',
+        'construction_management_fee': r'(?:construction\s*management|cm\s*fee|development\s*fee)[:\s]*([\d.]+)\s*%?',
+        'disposition_fee': r'(?:disposition\s*fee|disp\.?\s*fee|exit\s*fee|sale\s*fee)[:\s]*([\d.]+)\s*%?',
+        'refinance_fee': r'(?:refinance\s*fee|refi\s*fee)[:\s]*([\d.]+)\s*%?',
+        'financing_fee': r'(?:financing\s*fee|loan\s*fee|origination\s*fee)[:\s]*([\d.]+)\s*%?',
     }
 
     PROPERTY_TYPES = {
@@ -478,6 +487,7 @@ class OMParser:
         property_details = self._extract_property_details(text, text_lower)
         financials = self._extract_financials(text, text_lower)
         deal_terms = self._extract_deal_terms(text, text_lower)
+        fees = self._extract_fees(text, text_lower)
 
         # Calculate derived metrics
         self._calculate_derived_metrics(financials, property_details)
@@ -486,6 +496,7 @@ class OMParser:
             property=property_details,
             financials=financials,
             deal_terms=deal_terms,
+            fees=fees,
             market_data=MarketData(),
             raw_text=text
         )
@@ -818,6 +829,106 @@ class OMParser:
                 break
 
         return terms
+
+    def _parse_fee_percentage(self, value: Optional[float]) -> Optional[float]:
+        """Convert a fee value to a decimal percentage.
+
+        Fee percentages in OMs are typically written as:
+        - "1.0%" or "1%" meaning 0.01 (1 percent)
+        - "2.5%" meaning 0.025 (2.5 percent)
+        - "10%" meaning 0.10 (10 percent)
+
+        This method converts any reasonable fee value to a decimal.
+        """
+        if value is None:
+            return None
+
+        # Fees are almost never > 20%, so if we see a number > 0.20,
+        # it's likely expressed as a percentage (e.g., 1.5 = 1.5%)
+        if value > 0.20:
+            return value / 100
+
+        # If it's between 0.01 and 0.20, it could be either:
+        # - Already a decimal (e.g., 0.015 = 1.5%)
+        # - A small percentage number (e.g., 1.5 = 1.5%)
+        # We'll assume values >= 0.5 are percentages
+        if value >= 0.5:
+            return value / 100
+
+        # Otherwise it's already a decimal
+        return value
+
+    def _extract_fees(self, text: str, text_lower: str) -> SponsorFees:
+        """Extract sponsor/GP fee structure from text"""
+        fees = SponsorFees()
+
+        # Acquisition fee
+        acq_fee = self._extract_number(text, self.PATTERNS['acquisition_fee'])
+        fees.acquisition_fee = self._parse_fee_percentage(acq_fee)
+
+        # Also look for flat acquisition fee
+        acq_flat_match = re.search(
+            r'(?:acquisition\s*fee|acq\.?\s*fee)[:\s]*\$?([\d,]+(?:\.\d+)?)\s*(?:K|thousand)?',
+            text, re.IGNORECASE
+        )
+        if acq_flat_match:
+            flat_val = self._safe_float(acq_flat_match.group(1))
+            if flat_val and flat_val > 100:  # Likely a flat dollar amount
+                fees.acquisition_fee_flat = flat_val
+
+        # Asset management fee
+        am_fee = self._extract_number(text, self.PATTERNS['asset_management_fee'])
+        fees.asset_management_fee = self._parse_fee_percentage(am_fee)
+
+        # Property management fee
+        pm_fee = self._extract_number(text, self.PATTERNS['property_management_fee'])
+        fees.property_management_fee = self._parse_fee_percentage(pm_fee)
+
+        # Construction/development management fee
+        cm_fee = self._extract_number(text, self.PATTERNS['construction_management_fee'])
+        fees.construction_management_fee = self._parse_fee_percentage(cm_fee)
+
+        # Disposition fee
+        disp_fee = self._extract_number(text, self.PATTERNS['disposition_fee'])
+        fees.disposition_fee = self._parse_fee_percentage(disp_fee)
+
+        # Refinance fee
+        refi_fee = self._extract_number(text, self.PATTERNS['refinance_fee'])
+        fees.refinance_fee = self._parse_fee_percentage(refi_fee)
+
+        # Financing/origination fee
+        fin_fee = self._extract_number(text, self.PATTERNS['financing_fee'])
+        fees.financing_fee = self._parse_fee_percentage(fin_fee)
+
+        # Look for promote/waterfall tiers
+        promote_patterns = [
+            r'(\d+)\s*%\s*(?:promote|carried\s*interest|carry)\s*(?:above|after|over)\s*(\d+)\s*%\s*(?:irr|return)',
+            r'(?:promote|carried\s*interest|carry)[:\s]*(\d+)\s*%\s*(?:above|after)\s*(\d+)\s*%',
+            r'(\d+)\s*/\s*(\d+)\s*(?:split|waterfall)\s*(?:above|after)\s*(\d+)\s*%',
+        ]
+        for pattern in promote_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                if not fees.promote_tier_1:
+                    fees.promote_tier_1 = match.group(0).strip()
+                elif not fees.promote_tier_2:
+                    fees.promote_tier_2 = match.group(0).strip()
+
+        # Look for additional fee mentions
+        other_fee_patterns = [
+            (r'(?:investor\s*servicing|servicing\s*fee)[:\s]*([\d.]+)\s*%?', 'Investor Servicing'),
+            (r'(?:organizational|org\.?\s*fee|formation\s*fee)[:\s]*([\d.]+)\s*%?', 'Organization Fee'),
+            (r'(?:guarantee\s*fee|guaranty\s*fee)[:\s]*([\d.]+)\s*%?', 'Guarantee Fee'),
+        ]
+        for pattern, name in other_fee_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                val = self._safe_float(match.group(1))
+                val = self._parse_fee_percentage(val)
+                if val:
+                    fees.other_fees.append((name, val))
+
+        return fees
 
     def _calculate_derived_metrics(self, financials: FinancialMetrics, property_details: PropertyDetails):
         """Calculate any derived metrics that weren't explicitly stated"""
