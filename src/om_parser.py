@@ -1,11 +1,10 @@
 """OM Parser - Extracts deal information from Offering Memorandums"""
-from __future__ import annotations
 
 import re
 import io
 import subprocess
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional
 from .models import (
     PropertyDetails, FinancialMetrics, DealTerms, SponsorFees,
     PropertyType, OMAnalysis, MarketData

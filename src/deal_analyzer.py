@@ -1,5 +1,4 @@
 """Deal Analyzer - Identifies pros, cons, and red flags in real estate deals"""
-from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional
