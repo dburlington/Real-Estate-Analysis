@@ -1,7 +1,8 @@
 """Data models for Real Estate OM Analysis"""
+from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, List, Tuple
 from enum import Enum
 
 

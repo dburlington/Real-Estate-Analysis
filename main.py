@@ -3,10 +3,12 @@
 Real Estate OM Analysis Tool
 Analyzes Offering Memorandums for real estate investments
 """
+from __future__ import annotations
 
 import sys
 import os
 from pathlib import Path
+from typing import List
 
 # Rich console for beautiful output
 try:
@@ -300,7 +302,7 @@ def display_fee_summary(console, analysis: OMAnalysis):
         print()
 
 
-def display_findings(console, findings: list[Finding], title: str, style: str):
+def display_findings(console, findings: List[Finding], title: str, style: str):
     """Display findings (pros, cons, or red flags)"""
     if not findings:
         return
