@@ -362,51 +362,51 @@ class OMParser:
     # Regex patterns for extracting data
     PATTERNS = {
         # Property info - more flexible patterns
-        'address': r'(?:address|location|property\s*address|site\s*address)[:\s]*([^\n,]+(?:,\s*[^\n]+)?)',
+        'address': r'(?:address|location|property\s*address|site\s*address|located\s*at)[:\s]*([^\n,]+(?:,\s*[^\n]+)?)',
         'city_state_zip': r'([A-Za-z][A-Za-z\s]{2,30}),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?)',
         'units': r'(?:total\s*)?(?:units?|apartment(?:s)?|doors?)[:\s]*(\d+)',
-        'sqft': r'(?:total\s*)?(?:sf|sq\.?\s*ft\.?|square\s*feet|rsf|nsf|gsf)[:\s]*([\d,]+)',
-        'year_built': r'(?:year\s*built|built\s*in|constructed|vintage)[:\s]*(\d{4})',
-        'lot_size': r'(?:lot\s*size|land\s*area|acreage|site\s*size)[:\s]*([\d.]+)\s*(?:acres?|ac\.?|sf)?',
+        'sqft': r'([\d,]+)[\s-]*(?:sf|sq\.?\s*ft\.?|square[\s-]*foot|square\s*feet|rsf|nsf|gsf)',
+        'year_built': r'(?:year\s*built|built\s*in|constructed|vintage|built\s*between)[:\s]*(\d{4})',
+        'lot_size': r'(?:lot\s*size|land\s*area|acreage|site\s*size|spanning)[:\s]*([\d.]+)\s*(?:acres?|ac\.?|sf)?',
 
-        # Financial metrics - expanded patterns
-        'asking_price': r'(?:asking\s*price|list\s*price|offering\s*price|purchase\s*price|sale\s*price)[:\s]*\$?([\d,]+(?:\.\d+)?)\s*(?:M|MM|million)?',
+        # Financial metrics - expanded patterns for various OM formats
+        'asking_price': r'(?:asking\s*price|list\s*price|offering\s*price|purchase\s*price|sale\s*price|total\s*price)[:\s]*\$?([\d,]+(?:\.\d+)?)\s*(?:M|MM|million)?',
         'price_per_unit': r'(?:price\s*per\s*unit|pp[uU]|per\s*unit)[:\s]*\$?([\d,]+(?:\.\d+)?)',
-        'price_per_sqft': r'(?:price\s*per\s*(?:sf|sq\.?\s*ft\.?)|psf)[:\s]*\$?([\d,]+(?:\.\d+)?)',
-        'cap_rate': r'(?:cap\s*rate|capitalization\s*rate|going[\s-]*in\s*cap)[:\s]*([\d.]+)\s*%?',
+        'price_per_sqft': r'(?:price\s*per\s*(?:sf|sq\.?\s*ft\.?)|psf|sales?\s*price\s*psf)[:\s]*\$?([\d,]+(?:\.\d+)?)',
+        'cap_rate': r'(?:cap\s*rate|capitalization\s*rate|going[\s-]*in\s*(?:cap|yield)|exit\s*cap(?:\s*rate)?)[:\s]*([\d.]+)\s*%?',
         'noi': r'(?:net\s*operating\s*income|noi|\bn\.o\.i\.)[:\s]*\$?([\d,]+(?:\.\d+)?)',
-        'occupancy': r'(?:occupancy|occupied|physical\s*occupancy|economic\s*occupancy)[:\s]*([\d.]+)\s*%?',
-        'avg_rent': r'(?:average\s*rent|avg\.?\s*rent|rent\s*per\s*unit|in[\s-]*place\s*rent)[:\s]*\$?([\d,]+(?:\.\d+)?)',
-        'market_rent': r'(?:market\s*rent|achievable\s*rent)[:\s]*\$?([\d,]+(?:\.\d+)?)',
+        'occupancy': r'(?:occupancy|occupied|physical\s*occupancy|economic\s*occupancy|fully\s*occupied)[:\s]*([\d.]+)\s*%?',
+        'avg_rent': r'(?:average\s*rent|avg\.?\s*rent|rent\s*per\s*unit|in[\s-]*place\s*rent|market\s*rent)[:\s]*\$?([\d.]+)',
+        'market_rent': r'(?:market\s*rent|achievable\s*rent|psf\s*market\s*rent)[:\s]*\$?([\d.]+)',
         'gpi': r'(?:gross\s*potential\s*income|gpi|gross\s*potential\s*rent|gpr)[:\s]*\$?([\d,]+(?:\.\d+)?)',
         'egi': r'(?:effective\s*gross\s*income|egi)[:\s]*\$?([\d,]+(?:\.\d+)?)',
         'expenses': r'(?:operating\s*expenses?|opex|total\s*expenses?)[:\s]*\$?([\d,]+(?:\.\d+)?)',
         'expense_ratio': r'(?:expense\s*ratio|operating\s*expense\s*ratio|oer)[:\s]*([\d.]+)\s*%?',
-        'coc': r'(?:cash[\s-]*on[\s-]*cash|coc|cash\s*yield)[:\s]*([\d.]+)\s*%?',
-        'irr': r'(?:irr|internal\s*rate\s*of\s*return|levered\s*irr)[:\s]*([\d.]+)\s*%?',
-        'equity_multiple': r'(?:equity\s*multiple|em|moic)[:\s]*([\d.]+)\s*x?',
+        'coc': r'(?:cash[\s-]*on[\s-]*cash|coc|cash\s*yield|annual\s*cash[\s-]*on[\s-]*cash)[:\s]*([\d.]+)\s*%?',
+        'irr': r'(?:(?:net\s*)?irr|internal\s*rate\s*of\s*return|levered\s*irr|proforma\s*(?:net\s*)?irr)[:\s]*([\d.]+)\s*%?',
+        'equity_multiple': r'(?:(?:net\s*)?equity\s*multiple|em|moic|proforma\s*(?:net\s*)?equity\s*multiple)[:\s]*([\d.]+)\s*x?',
 
         # Loan terms - expanded
-        'loan_amount': r'(?:loan\s*amount|debt|mortgage|senior\s*loan)[:\s]*\$?([\d,]+(?:\.\d+)?)\s*(?:M|MM|million)?',
+        'loan_amount': r'(?:loan\s*amount|senior\s*debt|mortgage|senior\s*loan)[:\s]*\$?([\d,]+(?:\.\d+)?)\s*(?:M|MM|million)?',
         'ltv': r'(?:ltv|loan[\s-]*to[\s-]*value|leverage)[:\s]*([\d.]+)\s*%?',
         'interest_rate': r'(?:interest\s*rate|coupon|rate)[:\s]*([\d.]+)\s*%?',
         'loan_term': r'(?:loan\s*term|term|maturity)[:\s]*(\d+)\s*(?:years?|yrs?)?',
         'amortization': r'(?:amortization|amort\.?)[:\s]*(\d+)\s*(?:years?|yrs?)?',
 
-        # Deal terms - expanded
-        'min_investment': r'(?:minimum\s*investment|min\.?\s*invest(?:ment)?|minimum\s*equity)[:\s]*\$?([\d,]+(?:\.\d+)?)',
-        'preferred_return': r'(?:preferred\s*return|pref(?:erred)?\.?\s*return|pref)[:\s]*([\d.]+)\s*%?',
+        # Deal terms - expanded for syndication OMs
+        'min_investment': r'(?:minimum\s*investment(?:\s*amount)?|min\.?\s*invest(?:ment)?|minimum\s*equity|minimum\s*capital\s*contribution)[:\s]*\$?([\d,]+(?:\.\d+)?)',
+        'preferred_return': r'(?:preferred\s*return|pref(?:erred)?\.?\s*return|pref|irr\s*hurdle)[:\s]*([\d.]+)\s*%?',
         'profit_split': r'(?:profit\s*split|waterfall|split|promote)[:\s]*(\d+)\s*/\s*(\d+)',
-        'hold_period': r'(?:hold\s*period|holding\s*period|investment\s*period|target\s*hold)[:\s]*(\d+)\s*(?:years?|yrs?)?',
+        'hold_period': r'(?:hold\s*period|holding\s*period|investment\s*period|target\s*hold|estimated\s*duration)[:\s]*(\d+)\s*(?:years?|yrs?|months?)?',
 
-        # Fee patterns
-        'acquisition_fee': r'(?:acquisition\s*fee|acq\.?\s*fee|closing\s*fee)[:\s]*([\d.]+)\s*%?',
-        'asset_management_fee': r'(?:asset\s*management\s*fee|am\s*fee|management\s*fee)[:\s]*([\d.]+)\s*%?',
-        'property_management_fee': r'(?:property\s*management|pm\s*fee)[:\s]*([\d.]+)\s*%?',
-        'construction_management_fee': r'(?:construction\s*management|cm\s*fee|development\s*fee)[:\s]*([\d.]+)\s*%?',
-        'disposition_fee': r'(?:disposition\s*fee|disp\.?\s*fee|exit\s*fee|sale\s*fee)[:\s]*([\d.]+)\s*%?',
+        # Fee patterns - more flexible
+        'acquisition_fee': r'(?:acquisition\s*fee|acq\.?\s*fee|closing\s*fee)[:\s]*([\d.]+)\s*%',
+        'asset_management_fee': r'(?:(?:annual\s*)?asset\s*management\s*fee|am\s*fee)[:\s]*([\d.]+)\s*%',
+        'property_management_fee': r'(?:property\s*management(?:\s*fee)?|pm\s*fee)[:\s]*([\d.]+)\s*%',
+        'construction_management_fee': r'(?:construction\s*management(?:\s*fee)?|cm\s*fee|development\s*fee)[:\s]*([\d.]+)\s*%',
+        'disposition_fee': r'(?:disposition\s*fee|disp\.?\s*fee|exit\s*fee|sale\s*fee|liquidation\s*fee)[:\s]*([\d.]+|none)\s*%?',
         'refinance_fee': r'(?:refinance\s*fee|refi\s*fee)[:\s]*([\d.]+)\s*%?',
-        'financing_fee': r'(?:financing\s*fee|loan\s*fee|origination\s*fee)[:\s]*([\d.]+)\s*%?',
+        'financing_fee': r'(?:financing\s*fee|loan\s*fee|origination\s*fee|debt\s*broker\s*fee)[:\s]*([\d.]+)\s*%?',
     }
 
     PROPERTY_TYPES = {
@@ -580,6 +580,10 @@ class OMParser:
         # Extract property name (look for prominent headers or "Property:" labels)
         name_patterns = [
             r'(?:property\s*name|subject\s*property|project\s*name)[:\s]*([^\n]+)',
+            # Match "OF PROPERTY_NAME" pattern common in investment memorandums
+            r'INVESTMENT\s+MEMORANDUM\s+OF\s+([A-Z][A-Z\s]+(?:INDUSTRIAL|APARTMENTS|PARK|PLAZA|CENTER|PLACE))',
+            # Match property names with common suffixes
+            r'(?:the\s+)?["\']?([A-Z][A-Za-z\s]+(?:Industrial\s*Park|Apartments|Place|Gardens|Manor|Village|Towers|Commons|Estates|Court|Park|Plaza|Center))["\']?',
             r'^([A-Z][A-Za-z\s]+(?:Apartments|Place|Gardens|Manor|Village|Towers|Commons|Estates|Court|Park))',
         ]
         for pattern in name_patterns:
@@ -588,10 +592,11 @@ class OMParser:
                 details.name = name_match.group(1).strip().title()
                 break
 
-        # Extract address - try multiple patterns
+        # Extract address - try multiple patterns including Highway
         address_patterns = [
             self.PATTERNS['address'],
-            r'(\d+\s+[A-Za-z\s]+(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Drive|Dr|Lane|Ln|Way|Circle|Cir)[^\n]*)',
+            r'(\d+\s+[A-Za-z\s\.]+(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Drive|Dr|Lane|Ln|Way|Circle|Cir|Highway|Hwy)[^\n]*)',
+            r'located\s+at\s+(\d+[^\n,]+)',
         ]
         for pattern in address_patterns:
             address_match = re.search(pattern, text, re.IGNORECASE)
@@ -599,17 +604,30 @@ class OMParser:
                 details.address = address_match.group(1).strip()
                 break
 
-        # Extract city, state, zip - try multiple patterns
+        # Extract city, state - try multiple patterns including state names
         csz_patterns = [
             self.PATTERNS['city_state_zip'],
             r'([A-Za-z][A-Za-z\s]{2,20})\s*,\s*([A-Z]{2})\s*(\d{5})',
+            # Match "City, State" without zip
+            r'(?:in|of)\s+([A-Za-z][A-Za-z\s-]{2,25}),\s*([A-Z]{2})(?:\s|\.|\,)',
+            # Match "Submarket of City-City, State"
+            r'(?:Submarket|Market)\s+of\s+([A-Za-z][A-Za-z\s-]+),\s*([A-Za-z\s]+(?:Carolina|Virginia|Georgia|Texas|Florida|Arizona))',
         ]
         for pattern in csz_patterns:
             csz_match = re.search(pattern, text)
             if csz_match:
                 details.city = csz_match.group(1).strip()
-                details.state = csz_match.group(2).upper()
-                details.zip_code = csz_match.group(3)
+                state = csz_match.group(2).strip().upper()
+                # Convert full state name to abbreviation
+                state_abbrevs = {
+                    'SOUTH CAROLINA': 'SC', 'NORTH CAROLINA': 'NC', 'VIRGINIA': 'VA',
+                    'WEST VIRGINIA': 'WV', 'GEORGIA': 'GA', 'FLORIDA': 'FL',
+                    'TEXAS': 'TX', 'ARIZONA': 'AZ', 'CALIFORNIA': 'CA',
+                    'NEW YORK': 'NY', 'TENNESSEE': 'TN', 'ALABAMA': 'AL',
+                }
+                details.state = state_abbrevs.get(state, state[:2])
+                if csz_match.lastindex >= 3:
+                    details.zip_code = csz_match.group(3)
                 break
 
         # Extract property type
@@ -623,25 +641,47 @@ class OMParser:
         if units and 1 < units < 10000:  # Sanity check
             details.total_units = int(units)
 
-        sqft = self._extract_number(text, self.PATTERNS['sqft'])
-        if sqft and sqft > 100:  # Sanity check
-            details.total_sqft = sqft
+        # Try multiple sqft patterns
+        sqft_patterns = [
+            r'([\d,]+)[\s-]*(?:sf|sq\.?\s*ft\.?|square[\s-]*foot|square\s*feet)',
+            r'(?:rentable|total|gross)\s*(?:sf|square\s*feet)[:\s]*([\d,]+)',
+            r'Total\s*/\s*Wtd\s*Avg[^\d]*([\d,]+)',  # From tables
+        ]
+        for pattern in sqft_patterns:
+            sqft_match = re.search(pattern, text, re.IGNORECASE)
+            if sqft_match:
+                sqft = self._safe_float(sqft_match.group(1))
+                if sqft and sqft > 1000:  # Sanity check for commercial
+                    details.total_sqft = sqft
+                    break
 
         year = self._extract_number(text, self.PATTERNS['year_built'])
         if year and 1800 < year < 2030:
             details.year_built = int(year)
 
-        lot_size = self._extract_number(text, self.PATTERNS['lot_size'])
-        if lot_size:
-            details.lot_size_acres = lot_size
+        # Extract lot size - try multiple patterns
+        lot_patterns = [
+            r'(?:spanning|lot\s*size|land\s*area|site\s*size)[:\s]*([\d.]+)\s*(?:acres?|ac\.?)',
+            r'([\d.]+)\s*acres?\s+(?:at|site|lot|property)',
+        ]
+        for pattern in lot_patterns:
+            lot_match = re.search(pattern, text, re.IGNORECASE)
+            if lot_match:
+                lot_size = self._safe_float(lot_match.group(1))
+                if lot_size and 0.1 < lot_size < 1000:
+                    details.lot_size_acres = lot_size
+                    break
 
-        # Extract amenities
+        # Extract amenities / features for industrial
         amenity_keywords = [
             'pool', 'gym', 'fitness', 'clubhouse', 'parking', 'garage',
             'laundry', 'playground', 'dog park', 'business center',
             'concierge', 'rooftop', 'balcony', 'patio', 'storage',
             'tennis', 'basketball', 'volleyball', 'grill', 'bbq',
-            'theater', 'yoga', 'spa', 'sauna', 'package locker'
+            'theater', 'yoga', 'spa', 'sauna', 'package locker',
+            # Industrial features
+            'dock doors', 'drive-in', 'clear height', 'sprinkler',
+            'hvac', 'led lighting', 'trailer parking', 'rail access'
         ]
         details.amenities = [a for a in amenity_keywords if a in text_lower]
 
@@ -651,9 +691,10 @@ class OMParser:
         """Extract financial metrics from text"""
         financials = FinancialMetrics()
 
-        # Asking price - handle various formats
+        # Asking/Purchase price - handle various formats including tables
         price_patterns = [
             r'(?:asking\s*price|list\s*price|offering\s*price|purchase\s*price|sale\s*price)[:\s]*\$?([\d,]+(?:\.\d+)?)\s*(M|MM|million)?',
+            r'Purchase\s*Price\s*\$?([\d,]+(?:\.\d+)?)',
             r'(?:price|total\s*price)[:\s]*\$?([\d,]+(?:\.\d+)?)\s*(M|MM|million)?',
         ]
         for pattern in price_patterns:
@@ -661,34 +702,58 @@ class OMParser:
             if price_match and price_match.group(1):
                 price = self._safe_float(price_match.group(1))
                 if price is not None:
-                    if price_match.group(2) or price < 1000:
+                    # Check for million suffix
+                    has_million = price_match.lastindex >= 2 and price_match.group(2)
+                    if has_million or price < 1000:
                         price *= 1_000_000
-                    financials.asking_price = price
-                    break
+                    if price > 100000:  # Sanity check - at least $100k
+                        financials.asking_price = price
+                        break
 
         financials.price_per_unit = self._extract_number(text, self.PATTERNS['price_per_unit'])
-        financials.price_per_sqft = self._extract_number(text, self.PATTERNS['price_per_sqft'])
+
+        # Price per SF from market tables
+        ppsf_patterns = [
+            r'(?:sales?\s*price|price)\s*(?:psf|per\s*sf)[:\s]*\$?([\d,]+)',
+            r'Sales\s*Price\s*PSF\s*\$?([\d,]+)',
+        ]
+        for pattern in ppsf_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                ppsf = self._safe_float(match.group(1))
+                if ppsf and 10 < ppsf < 1000:
+                    financials.price_per_sqft = ppsf
+                    break
 
         # Cap rates - handle multiple cap rates with context
-        cap_matches = re.findall(
-            r'(?:(in[\s-]*place|current|going[\s-]*in|pro[\s-]*forma|stabilized|exit)\s+)?cap\s*rate[:\s]*([\d.]+)\s*%?',
-            text, re.IGNORECASE
-        )
-        for prefix, rate in cap_matches:
-            rate_val = self._safe_float(rate)
-            if rate_val is None:
-                continue
-            if rate_val > 1:  # Convert from percentage
-                rate_val /= 100
-            if rate_val > 0.15 or rate_val < 0.01:  # Sanity check - cap rates typically 1-15%
-                continue
-            prefix_lower = (prefix or '').lower()
-            if any(p in prefix_lower for p in ['pro', 'stabilized', 'exit']):
-                financials.proforma_cap_rate = rate_val
-            elif any(p in prefix_lower for p in ['current', 'in-place', 'in place', 'going']):
-                financials.current_cap_rate = rate_val
-            elif not financials.current_cap_rate:
-                financials.current_cap_rate = rate_val
+        # Look for "Projected Exit Cap Rate (4-year hold) 6.5%" or "Going-In Yield 6.3%"
+        cap_patterns = [
+            # Exit cap rate - with optional parenthetical
+            (r'(?:projected\s*)?exit\s*cap(?:\s*rate)?(?:\s*\([^)]+\))?[:\s]*([\d.]+)\s*%?', 'exit'),
+            # Going-in yield (current)
+            (r'(?:proforma\s*)?going[\s-]*in\s*(?:cap|yield)[:\s]*([\d.]+)\s*%?', 'current'),
+            # Stabilized yield (proforma)
+            (r'(?:proforma\s*)?(?:stable|stabilized)(?:\s*year\s*\d+)?\s*yield(?:\s*on\s*cost)?[:\s]*([\d.]+)\s*%?', 'proforma'),
+            # In-place / current cap
+            (r'(?:in[\s-]*place|current)\s*(?:cap\s*rate|yield)[:\s]*([\d.]+)\s*%?', 'current'),
+            # Generic cap rate
+            (r'cap\s*rate[:\s]*([\d.]+)\s*%?', 'current'),
+        ]
+        for pattern, cap_type in cap_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                rate_val = self._safe_float(match.group(1))
+                if rate_val is None:
+                    continue
+                if rate_val > 1:  # Convert from percentage
+                    rate_val /= 100
+                if 0.01 <= rate_val <= 0.15:  # Sanity check
+                    if cap_type == 'exit' or cap_type == 'proforma':
+                        if not financials.proforma_cap_rate:
+                            financials.proforma_cap_rate = rate_val
+                    elif cap_type == 'current':
+                        if not financials.current_cap_rate:
+                            financials.current_cap_rate = rate_val
 
         # NOI - handle multiple with context
         noi_matches = re.findall(
@@ -707,17 +772,34 @@ class OMParser:
             elif not financials.current_noi:
                 financials.current_noi = noi_val
 
-        # Occupancy - may appear multiple times
-        occ_matches = self._extract_all_numbers(text, self.PATTERNS['occupancy'])
-        for context, occ in occ_matches:
-            if 'economic' not in context:  # Prefer physical occupancy
-                occ_val = occ if occ <= 1 else occ / 100
-                if 0.5 <= occ_val <= 1.0:  # Sanity check
-                    financials.current_occupancy = occ_val
+        # Occupancy - check for "fully occupied" first
+        if 'fully occupied' in text_lower or 'fully leased' in text_lower:
+            financials.current_occupancy = 1.0
+        else:
+            occ_matches = self._extract_all_numbers(text, self.PATTERNS['occupancy'])
+            for context, occ in occ_matches:
+                if 'economic' not in context:  # Prefer physical occupancy
+                    occ_val = occ if occ <= 1 else occ / 100
+                    if 0.5 <= occ_val <= 1.0:  # Sanity check
+                        financials.current_occupancy = occ_val
+                        break
+
+        # Market rent from tables (e.g., "PSF Market Rent $7.1")
+        market_rent_patterns = [
+            r'(?:psf\s*)?market\s*rent[:\s]*\$?([\d.]+)',
+            r'market\s*rent\s*(?:psf)?[:\s]*\$?([\d.]+)',
+        ]
+        for pattern in market_rent_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                rent = self._safe_float(match.group(1))
+                if rent and 1 < rent < 100:  # PSF rent sanity check
+                    financials.market_rent = rent
                     break
 
         financials.average_rent = self._extract_number(text, self.PATTERNS['avg_rent'])
-        financials.market_rent = self._extract_number(text, self.PATTERNS['market_rent'])
+        if not financials.market_rent:
+            financials.market_rent = self._extract_number(text, self.PATTERNS['market_rent'])
         financials.gross_potential_income = self._extract_number(text, self.PATTERNS['gpi'])
         financials.effective_gross_income = self._extract_number(text, self.PATTERNS['egi'])
         financials.operating_expenses = self._extract_number(text, self.PATTERNS['expenses'])
@@ -728,21 +810,50 @@ class OMParser:
             if 0.1 <= exp_ratio_val <= 0.9:  # Sanity check
                 financials.expense_ratio = exp_ratio_val
 
-        coc = self._extract_number(text, self.PATTERNS['coc'])
-        if coc:
-            coc_val = coc if coc <= 1 else coc / 100
-            if 0 <= coc_val <= 0.5:  # Sanity check
-                financials.cash_on_cash_return = coc_val
+        # Cash on Cash - look for "Proforma Average Annual Cash on Cash 7.7%"
+        coc_patterns = [
+            r'(?:proforma\s*)?(?:average\s*)?(?:annual\s*)?cash[\s-]*on[\s-]*cash[:\s]*([\d.]+)\s*%?',
+            r'cash[\s-]*on[\s-]*cash(?:\s*return)?[:\s]*([\d.]+)\s*%?',
+        ]
+        for pattern in coc_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                coc = self._safe_float(match.group(1))
+                if coc:
+                    coc_val = coc if coc <= 1 else coc / 100
+                    if 0 <= coc_val <= 0.5:
+                        financials.cash_on_cash_return = coc_val
+                        break
 
-        irr = self._extract_number(text, self.PATTERNS['irr'])
-        if irr:
-            irr_val = irr if irr <= 1 else irr / 100
-            if 0 <= irr_val <= 0.5:  # Sanity check
-                financials.irr_projected = irr_val
+        # IRR - look for "Proforma Net IRR 15.2%"
+        irr_patterns = [
+            r'(?:proforma\s*)?(?:net\s*)?irr[:\s]*([\d.]+)\s*%?',
+            r'(?:net\s*)?irr(?:\s*\(\d+\))?[:\s]*([\d.]+)\s*%?',
+            r'internal\s*rate\s*of\s*return[:\s]*([\d.]+)\s*%?',
+        ]
+        for pattern in irr_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                irr = self._safe_float(match.group(1))
+                if irr:
+                    irr_val = irr if irr <= 1 else irr / 100
+                    if 0 <= irr_val <= 0.5:
+                        financials.irr_projected = irr_val
+                        break
 
-        em = self._extract_number(text, self.PATTERNS['equity_multiple'])
-        if em and 1.0 <= em <= 5.0:  # Sanity check
-            financials.equity_multiple = em
+        # Equity Multiple - look for "Proforma Net Equity Multiple 1.7x"
+        em_patterns = [
+            r'(?:proforma\s*)?(?:net\s*)?equity\s*multiple[:\s]*([\d.]+)\s*x?',
+            r'(?:net\s*)?equity\s*multiple(?:\s*\(\d+\))?[:\s]*([\d.]+)\s*x?',
+            r'moic[:\s]*([\d.]+)\s*x?',
+        ]
+        for pattern in em_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                em = self._safe_float(match.group(1))
+                if em and 1.0 <= em <= 5.0:
+                    financials.equity_multiple = em
+                    break
 
         return financials
 
@@ -750,8 +861,9 @@ class OMParser:
         """Extract deal terms from text"""
         terms = DealTerms()
 
-        # Loan amount
+        # Loan/Debt amount - look for "Senior Debt $30,000,000"
         loan_patterns = [
+            r'Senior\s*Debt\s*\$?([\d,]+)',
             r'(?:loan\s*amount|senior\s*loan|debt\s*amount)[:\s]*\$?([\d,]+(?:\.\d+)?)\s*(M|MM|million)?',
             r'(?:mortgage|financing)[:\s]*\$?([\d,]+(?:\.\d+)?)\s*(M|MM|million)?',
         ]
@@ -760,10 +872,13 @@ class OMParser:
             if loan_match and loan_match.group(1):
                 loan = self._safe_float(loan_match.group(1))
                 if loan is not None:
-                    if loan_match.group(2) or loan < 1000:
+                    # Check for million suffix
+                    has_million = loan_match.lastindex >= 2 and loan_match.group(2)
+                    if has_million or loan < 1000:
                         loan *= 1_000_000
-                    terms.loan_amount = loan
-                    break
+                    if loan > 100000:  # Sanity check
+                        terms.loan_amount = loan
+                        break
 
         ltv = self._extract_number(text, self.PATTERNS['ltv'])
         if ltv:
@@ -797,21 +912,69 @@ class OMParser:
 
         terms.assumable_debt = any(x in text_lower for x in ['assumable', 'assumption'])
 
-        terms.minimum_investment = self._extract_number(text, self.PATTERNS['min_investment'])
+        # Minimum Investment - look for "Minimum Investment Amount $100,000"
+        min_inv_patterns = [
+            r'Minimum\s*Investment(?:\s*Amount)?[:\s]*\$?([\d,]+)',
+            r'Minimum\s*Capital\s*Contribution[:\s]*\$?([\d,]+)',
+            r'minimum\s*(?:investment|equity)[:\s]*\$?([\d,]+)',
+        ]
+        for pattern in min_inv_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                min_inv = self._safe_float(match.group(1))
+                if min_inv and min_inv >= 1000:  # At least $1,000
+                    terms.minimum_investment = min_inv
+                    break
 
-        pref = self._extract_number(text, self.PATTERNS['preferred_return'])
-        if pref:
-            pref_val = pref if pref <= 1 else pref / 100
-            if 0 <= pref_val <= 0.15:
-                terms.preferred_return = pref_val
+        # Preferred return / IRR Hurdle - look for "IRR Hurdle 8%"
+        pref_patterns = [
+            r'IRR\s*(?:Hurdle|Target)[:\s]*([\d.]+)\s*%',
+            r'preferred\s*return[:\s]*([\d.]+)\s*%',
+            r'(?:achieve\s*)?(?:an\s*)?IRR\s*(?:equal\s*to\s*)?([\d.]+)\s*(?:percent|%)',
+        ]
+        for pattern in pref_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                pref = self._safe_float(match.group(1))
+                if pref:
+                    pref_val = pref if pref <= 1 else pref / 100
+                    if 0 <= pref_val <= 0.20:
+                        terms.preferred_return = pref_val
+                        break
 
-        split_match = re.search(self.PATTERNS['profit_split'], text, re.IGNORECASE)
-        if split_match:
-            terms.profit_split = f"{split_match.group(1)}/{split_match.group(2)}"
+        # Profit split - look for "eighty percent (80%) to the Series Member and twenty percent (20%)"
+        split_patterns = [
+            # "(80%) to the Series Member...and (20%) to the Manager"
+            r'\((\d+)%?\)\s*to\s*(?:the\s*)?(?:Series\s*)?Member.*?\((\d+)%?\)\s*to\s*(?:the\s*)?Manager',
+            # "80/20 split"
+            r'(\d+)\s*/\s*(\d+)\s*(?:split|waterfall)',
+            # General profit split pattern
+            self.PATTERNS['profit_split'],
+        ]
+        for pattern in split_patterns:
+            split_match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if split_match:
+                terms.profit_split = f"{split_match.group(1)}/{split_match.group(2)}"
+                break
 
-        hold = self._extract_number(text, self.PATTERNS['hold_period'])
-        if hold and 1 <= hold <= 15:
-            terms.hold_period_years = int(hold)
+        # Hold period - look for "Estimated Duration (Months) 48"
+        hold_patterns = [
+            r'Estimated\s*Duration\s*\(Months\)[:\s]*(\d+)',
+            r'(?:hold|holding|investment)\s*period[:\s]*(\d+)\s*(?:months?|years?)',
+            r'(\d+)\s*(?:months?|years?)\s*(?:hold|holding)\s*period',
+            r'projected\s*holding\s*period\s*of\s*(\d+)\s*months',
+        ]
+        for pattern in hold_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                hold = self._safe_float(match.group(1))
+                if hold:
+                    # Check if it's months (typically > 12) or years
+                    if 'month' in pattern.lower() or hold > 12:
+                        hold = hold / 12  # Convert months to years
+                    if 1 <= hold <= 15:
+                        terms.hold_period_years = int(round(hold))
+                        break
 
         # Prepayment penalty
         prepay_patterns = [
@@ -862,9 +1025,17 @@ class OMParser:
         """Extract sponsor/GP fee structure from text"""
         fees = SponsorFees()
 
-        # Acquisition fee
-        acq_fee = self._extract_number(text, self.PATTERNS['acquisition_fee'])
-        fees.acquisition_fee = self._parse_fee_percentage(acq_fee)
+        # Acquisition fee - look for table format "Acquisition Fee ... 1.50%"
+        acq_patterns = [
+            r'Acquisition\s*Fee[:\s]*(?:.*?)([\d.]+)\s*%\s*(?:of\s*(?:the\s*)?Purchase\s*Price)?',
+            r'(?:acquisition\s*fee|acq\.?\s*fee)[:\s]*([\d.]+)\s*%',
+        ]
+        for pattern in acq_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                acq_fee = self._safe_float(match.group(1))
+                fees.acquisition_fee = self._parse_fee_percentage(acq_fee)
+                break
 
         # Also look for flat acquisition fee
         acq_flat_match = re.search(
@@ -876,21 +1047,55 @@ class OMParser:
             if flat_val and flat_val > 100:  # Likely a flat dollar amount
                 fees.acquisition_fee_flat = flat_val
 
-        # Asset management fee
-        am_fee = self._extract_number(text, self.PATTERNS['asset_management_fee'])
-        fees.asset_management_fee = self._parse_fee_percentage(am_fee)
+        # Asset management fee - look for "Annual Asset Management Fee 1.0%"
+        am_patterns = [
+            r'(?:Annual\s*)?Asset\s*Management\s*Fee[:\s]*([\d.]+)\s*%',
+            r'(?:asset\s*management\s*fee|am\s*fee)[:\s]*([\d.]+)\s*%',
+        ]
+        for pattern in am_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                am_fee = self._safe_float(match.group(1))
+                fees.asset_management_fee = self._parse_fee_percentage(am_fee)
+                break
 
         # Property management fee
-        pm_fee = self._extract_number(text, self.PATTERNS['property_management_fee'])
-        fees.property_management_fee = self._parse_fee_percentage(pm_fee)
+        pm_patterns = [
+            r'Property\s*Management\s*(?:Fee)?[:\s]*([\d.]+)\s*%',
+            r'(?:property\s*management|pm\s*fee)[:\s]*([\d.]+)\s*%',
+        ]
+        for pattern in pm_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                pm_fee = self._safe_float(match.group(1))
+                fees.property_management_fee = self._parse_fee_percentage(pm_fee)
+                break
 
-        # Construction/development management fee
-        cm_fee = self._extract_number(text, self.PATTERNS['construction_management_fee'])
-        fees.construction_management_fee = self._parse_fee_percentage(cm_fee)
+        # Construction management fee - look for "Construction Management Fee 5.0%"
+        cm_patterns = [
+            r'Construction\s*Management\s*Fee[:\s]*([\d.]+)\s*%',
+            r'(?:construction\s*management|cm\s*fee|development\s*fee)[:\s]*([\d.]+)\s*%',
+        ]
+        for pattern in cm_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                cm_fee = self._safe_float(match.group(1))
+                fees.construction_management_fee = self._parse_fee_percentage(cm_fee)
+                break
 
-        # Disposition fee
-        disp_fee = self._extract_number(text, self.PATTERNS['disposition_fee'])
-        fees.disposition_fee = self._parse_fee_percentage(disp_fee)
+        # Disposition fee - check for "None" as well
+        disp_patterns = [
+            r'Disposition\s*Fee[:\s]*([\d.]+|None)\s*%?',
+            r'(?:disposition\s*fee|exit\s*fee)[:\s]*([\d.]+|None)\s*%?',
+        ]
+        for pattern in disp_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                val = match.group(1)
+                if val.lower() != 'none':
+                    disp_fee = self._safe_float(val)
+                    fees.disposition_fee = self._parse_fee_percentage(disp_fee)
+                break
 
         # Refinance fee
         refi_fee = self._extract_number(text, self.PATTERNS['refinance_fee'])
