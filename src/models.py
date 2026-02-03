@@ -39,6 +39,9 @@ class PropertyDetails:
     total_sqft: Optional[float] = None
     lot_size_acres: Optional[float] = None
     parking_spaces: Optional[int] = None
+    num_buildings: Optional[int] = None
+    num_tenants: Optional[int] = None
+    walt_years: Optional[float] = None  # Weighted Average Lease Term
     amenities: list[str] = field(default_factory=list)
 
 

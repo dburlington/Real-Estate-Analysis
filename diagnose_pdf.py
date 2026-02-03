@@ -47,8 +47,11 @@ def diagnose_pdf(file_path: str):
     print(f"    Zip: {prop.zip_code or '(not found)'}")
     print(f"    Property Type: {prop.property_type}")
     print(f"    Units: {prop.total_units or '(not found)'}")
+    print(f"    Buildings: {prop.num_buildings or '(not found)'}")
+    print(f"    Tenants: {prop.num_tenants or '(not found)'}")
     print(f"    Sq Ft: {prop.total_sqft or '(not found)'}")
     print(f"    Year Built: {prop.year_built or '(not found)'}")
+    print(f"    WALT: {prop.walt_years:.1f} years" if prop.walt_years else "    WALT: (not found)")
 
     print(f"\n[5] EXTRACTED FINANCIAL METRICS:")
     fin = analysis.financials
@@ -79,11 +82,19 @@ def diagnose_pdf(file_path: str):
     print(f"    Property Mgmt Fee: {fees.property_management_fee:.1%}" if fees.property_management_fee else "    Property Mgmt Fee: (not found)")
     print(f"    Disposition Fee: {fees.disposition_fee:.1%}" if fees.disposition_fee else "    Disposition Fee: (not found)")
 
+    print(f"\n[8] EXTRACTED MARKET DATA:")
+    market = analysis.market_data
+    print(f"    Market Vacancy: {market.market_vacancy_rate:.1%}" if market.market_vacancy_rate else "    Market Vacancy: (not found)")
+    print(f"    Market Rent PSF: ${market.market_rent_psf:.2f}" if market.market_rent_psf else "    Market Rent PSF: (not found)")
+    print(f"    Market Cap Rate: {market.market_cap_rate:.2%}" if market.market_cap_rate else "    Market Cap Rate: (not found)")
+    print(f"    Rent Growth: {market.rent_growth_1yr:.1%}" if market.rent_growth_1yr else "    Rent Growth: (not found)")
+
     # Step 5: Search for key terms in raw text
-    print(f"\n[8] SEARCHING FOR KEY TERMS IN RAW TEXT:")
+    print(f"\n[9] SEARCHING FOR KEY TERMS IN RAW TEXT:")
     search_terms = [
         'price', 'purchase', 'cap rate', 'noi', 'units', 'occupancy',
-        'rent', 'irr', 'equity multiple', 'preferred', 'fee', 'loan'
+        'rent', 'irr', 'equity multiple', 'preferred', 'fee', 'loan',
+        'walt', 'lease term', 'vacancy', 'year built', 'built between', 'tenants'
     ]
     text_lower = raw_text.lower()
     for term in search_terms:
@@ -101,7 +112,7 @@ def diagnose_pdf(file_path: str):
     output_file = Path(file_path).stem + "_extracted.txt"
     with open(output_file, 'w') as f:
         f.write(raw_text)
-    print(f"\n[9] Full extracted text saved to: {output_file}")
+    print(f"\n[10] Full extracted text saved to: {output_file}")
     print(f"\nReview this file to see exactly what text was extracted from the PDF.")
     print(f"{'='*60}\n")
 

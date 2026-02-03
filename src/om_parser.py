@@ -488,6 +488,7 @@ class OMParser:
         financials = self._extract_financials(text, text_lower)
         deal_terms = self._extract_deal_terms(text, text_lower)
         fees = self._extract_fees(text, text_lower)
+        market_data = self._extract_market_data(text, text_lower)
 
         # Calculate derived metrics
         self._calculate_derived_metrics(financials, property_details)
@@ -497,7 +498,7 @@ class OMParser:
             financials=financials,
             deal_terms=deal_terms,
             fees=fees,
-            market_data=MarketData(),
+            market_data=market_data,
             raw_text=text
         )
 
@@ -507,6 +508,23 @@ class OMParser:
         text = re.sub(r'\x00', '', text)  # Remove null bytes
         text = re.sub(r'\r\n', '\n', text)  # Normalize line endings
         text = re.sub(r'\r', '\n', text)
+
+        # Decode HTML entities (common in PDF extraction)
+        html_entities = {
+            '&#x201c;': '"', '&#x201d;': '"',  # Smart quotes
+            '&#x2018;': "'", '&#x2019;': "'",  # Smart apostrophes
+            '&#x2013;': '-', '&#x2014;': '-',  # En-dash, em-dash
+            '&#x2022;': '•', '&#x00b7;': '·',  # Bullets
+            '&amp;': '&', '&lt;': '<', '&gt;': '>',
+            '&nbsp;': ' ', '&#160;': ' ',
+            '&quot;': '"', '&#34;': '"',
+            '&apos;': "'", '&#39;': "'",
+        }
+        for entity, char in html_entities.items():
+            text = text.replace(entity, char)
+        # Also handle numeric HTML entities
+        text = re.sub(r'&#x([0-9a-fA-F]+);', lambda m: chr(int(m.group(1), 16)), text)
+        text = re.sub(r'&#(\d+);', lambda m: chr(int(m.group(1))), text)
 
         # Fix spacing issues from PDF extraction
         text = re.sub(r'(\d)\s+,\s*(\d)', r'\1,\2', text)  # Fix "1 , 000" -> "1,000"
@@ -658,6 +676,63 @@ class OMParser:
         year = self._extract_number(text, self.PATTERNS['year_built'])
         if year and 1800 < year < 2030:
             details.year_built = int(year)
+        else:
+            # Try "built between YYYY and YYYY" pattern
+            year_range_match = re.search(r'built\s+between\s+(\d{4})\s+and\s+(\d{4})', text, re.IGNORECASE)
+            if year_range_match:
+                details.year_built = int(year_range_match.group(1))  # Use earliest year
+
+        # Extract number of buildings
+        buildings_patterns = [
+            r'(\w+)[\s-]*building',  # "six-building" or "6 building"
+            r'(\d+)\s*buildings?',
+        ]
+        word_to_num = {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6,
+                       'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10, 'eleven': 11, 'twelve': 12}
+        for pattern in buildings_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                val = match.group(1).lower()
+                if val.isdigit():
+                    details.num_buildings = int(val)
+                    # For industrial, buildings can serve as units
+                    if not details.total_units and details.property_type == PropertyType.INDUSTRIAL:
+                        details.total_units = int(val)
+                elif val in word_to_num:
+                    details.num_buildings = word_to_num[val]
+                    if not details.total_units and details.property_type == PropertyType.INDUSTRIAL:
+                        details.total_units = word_to_num[val]
+                break
+
+        # Extract WALT (Weighted Average Lease Term)
+        walt_patterns = [
+            r'([\d.]+)[\s-]*year\s+(?:weighted\s+average\s+)?(?:lease\s+term|walt)',
+            r'(?:weighted\s+average\s+)?(?:lease\s+term|walt)[:\s]*([\d.]+)\s*(?:years?)?',
+            r'walt\s*(?:of)?\s*([\d.]+)\s*(?:years?)?',
+        ]
+        for pattern in walt_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                walt = self._safe_float(match.group(1))
+                if walt and 0.1 <= walt <= 30:  # Sanity check
+                    details.walt_years = walt
+                    break
+
+        # Extract number of tenants
+        tenant_patterns = [
+            r'(?:fully\s+)?(?:occupied|leased)\s+(?:by|to)\s+(\w+)\s+tenants?',
+            r'(\w+)\s+tenants?\s+(?:occupy|lease)',
+            r'(\d+)\s+tenants?',
+        ]
+        for pattern in tenant_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                val = match.group(1).lower()
+                if val.isdigit():
+                    details.num_tenants = int(val)
+                elif val in word_to_num:
+                    details.num_tenants = word_to_num[val]
+                break
 
         # Extract lot size - try multiple patterns
         lot_patterns = [
@@ -1134,6 +1209,86 @@ class OMParser:
                     fees.other_fees.append((name, val))
 
         return fees
+
+    def _extract_market_data(self, text: str, text_lower: str) -> MarketData:
+        """Extract market data from the OM (typically from market comparison sections)"""
+        market = MarketData()
+
+        # Extract vacancy rate from market tables
+        vacancy_patterns = [
+            r'(?:market\s+)?vacancy\s*(?:rate)?[:\s]*([\d.]+)\s*%',
+            r'vacancy[:\s]*([\d.]+)\s*%',
+            r'([\d.]+)\s*%\s*vacancy',
+        ]
+        for pattern in vacancy_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                vacancy = self._safe_float(match.group(1))
+                if vacancy is not None:
+                    vacancy_val = vacancy if vacancy <= 1 else vacancy / 100
+                    if 0 <= vacancy_val <= 0.30:  # Sanity check - up to 30% vacancy
+                        market.market_vacancy_rate = vacancy_val
+                        break
+
+        # Extract market rent PSF
+        market_rent_patterns = [
+            r'(?:market|asking)\s*rent\s*(?:psf)?[:\s]*\$?([\d.]+)',
+            r'psf\s*(?:market\s*)?rent[:\s]*\$?([\d.]+)',
+        ]
+        for pattern in market_rent_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                rent = self._safe_float(match.group(1))
+                if rent and 1 < rent < 100:  # PSF rent sanity check
+                    market.market_rent_psf = rent
+                    break
+
+        # Extract market cap rate
+        market_cap_patterns = [
+            r'(?:market|comparable)\s*cap\s*(?:rate)?[:\s]*([\d.]+)\s*%',
+            r'market\s+(?:cap\s+)?rate[:\s]*([\d.]+)\s*%',
+        ]
+        for pattern in market_cap_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                cap = self._safe_float(match.group(1))
+                if cap is not None:
+                    cap_val = cap if cap <= 1 else cap / 100
+                    if 0.02 <= cap_val <= 0.15:
+                        market.market_cap_rate = cap_val
+                        break
+
+        # Extract rent growth
+        rent_growth_patterns = [
+            r'rent\s*growth[:\s]*([\d.]+)\s*%',
+            r'([\d.]+)\s*%\s*rent\s*growth',
+        ]
+        for pattern in rent_growth_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                growth = self._safe_float(match.group(1))
+                if growth is not None:
+                    growth_val = growth if growth <= 1 else growth / 100
+                    if -0.1 <= growth_val <= 0.2:  # -10% to +20%
+                        market.rent_growth_1yr = growth_val
+                        break
+
+        # Extract absorption rate
+        absorption_patterns = [
+            r'absorption\s*(?:rate)?[:\s]*([\d.]+)\s*%',
+            r'([\d.]+)\s*%\s*absorption',
+        ]
+        for pattern in absorption_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                absorption = self._safe_float(match.group(1))
+                if absorption is not None:
+                    absorption_val = absorption if absorption <= 1 else absorption / 100
+                    if 0 <= absorption_val <= 1:
+                        market.absorption_rate = absorption_val
+                        break
+
+        return market
 
     def _calculate_derived_metrics(self, financials: FinancialMetrics, property_details: PropertyDetails):
         """Calculate any derived metrics that weren't explicitly stated"""
