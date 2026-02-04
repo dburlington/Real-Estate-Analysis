@@ -3,17 +3,29 @@
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from io import BytesIO
 
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    PageBreak, HRFlowable, ListFlowable, ListItem
-)
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
+# Import reportlab with graceful PIL handling
+import sys
+_original_pil = sys.modules.get('PIL')
+try:
+    # Temporarily suppress PIL import errors since reportlab doesn't strictly need it
+    # for basic text/table PDFs
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        PageBreak, HRFlowable, ListFlowable, ListItem
+    )
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
+except ImportError as e:
+    if 'PIL' in str(e) or '_imaging' in str(e):
+        raise ImportError(
+            f"Pillow architecture mismatch. Please reinstall: pip uninstall pillow && pip install --no-cache-dir pillow\n"
+            f"Original error: {e}"
+        )
+    raise
 
 from .models import OMAnalysis, Finding, RiskLevel, PropertyType
 
