@@ -24,11 +24,13 @@ except ImportError:
     RICH_AVAILABLE = False
 
 # PDF report generation
+PDF_IMPORT_ERROR = None
 try:
     from src.report_generator import PDFReportGenerator
     PDF_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     PDF_AVAILABLE = False
+    PDF_IMPORT_ERROR = str(e)
 
 from src.om_parser import OMParser
 from src.deal_analyzer import DealAnalyzer
@@ -440,9 +442,9 @@ def analyze_om(om_input: str, console) -> OMAnalysis:
 def generate_pdf_report(analysis: OMAnalysis, output_path: str, console) -> str:
     """Generate a PDF report from the analysis"""
     if not PDF_AVAILABLE:
-        raise ImportError(
+        error_msg = f"PDF generation failed: {PDF_IMPORT_ERROR}" if PDF_IMPORT_ERROR else \
             "PDF generation requires reportlab. Install with: pip install reportlab"
-        )
+        raise ImportError(error_msg)
 
     generator = PDFReportGenerator()
     report_path = generator.generate_report(analysis, output_path)
