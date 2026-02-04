@@ -26,6 +26,13 @@ from src.deal_analyzer import DealAnalyzer
 from src.market_data import MarketDataFetcher
 from src.models import RiskLevel, Finding, OMAnalysis
 
+# PDF report generation
+try:
+    from src.pdf_report import generate_pdf_report
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+
 
 def create_console():
     """Create a rich console or fallback"""
@@ -402,6 +409,79 @@ def display_detailed_findings(console, analysis: OMAnalysis):
             print()
 
 
+def generate_default_filename(analysis: OMAnalysis) -> str:
+    """Generate a default filename for the PDF report"""
+    from datetime import datetime
+    import re
+
+    # Use property name if available, otherwise generic name
+    if analysis.property.name:
+        # Sanitize the name for use in filename
+        name = re.sub(r'[^\w\s-]', '', analysis.property.name)
+        name = re.sub(r'\s+', '_', name)[:50]
+    else:
+        name = "Property_Analysis"
+
+    # Add date
+    date_str = datetime.now().strftime("%Y%m%d")
+
+    return f"{name}_Report_{date_str}.pdf"
+
+
+def export_to_pdf(console, analysis: OMAnalysis, suggested_path: str = None) -> str | None:
+    """Export analysis to PDF file
+
+    Returns the path to the generated PDF file, or None if export was cancelled/failed.
+    """
+    if not PDF_AVAILABLE:
+        if console:
+            console.print("[yellow]PDF export not available. Install reportlab: pip install reportlab[/yellow]")
+        else:
+            print("PDF export not available. Install reportlab: pip install reportlab")
+        return None
+
+    # Get default filename
+    default_filename = generate_default_filename(analysis)
+
+    if console:
+        console.print()
+        console.print("[bold]Export to PDF[/bold]")
+
+        # Ask for output path
+        output_path = Prompt.ask(
+            "Enter output path",
+            default=default_filename
+        )
+    else:
+        print("\nExport to PDF")
+        output_path = input(f"Enter output path [{default_filename}]: ").strip()
+        if not output_path:
+            output_path = default_filename
+
+    try:
+        # Generate the PDF
+        if console:
+            with console.status("[bold green]Generating PDF report..."):
+                result_path = generate_pdf_report(analysis, output_path)
+        else:
+            print("Generating PDF report...")
+            result_path = generate_pdf_report(analysis, output_path)
+
+        if console:
+            console.print(f"[green]PDF report saved to: {result_path}[/green]")
+        else:
+            print(f"PDF report saved to: {result_path}")
+
+        return result_path
+
+    except Exception as e:
+        if console:
+            console.print(f"[red]Error generating PDF: {e}[/red]")
+        else:
+            print(f"Error generating PDF: {e}")
+        return None
+
+
 def analyze_om(om_input: str, console) -> OMAnalysis:
     """Parse and analyze the OM"""
     parser = OMParser()
@@ -482,6 +562,19 @@ def main():
             show_details = input("Show detailed analysis? (y/n): ").strip().lower()
             if show_details == 'y':
                 display_detailed_findings(console, analysis)
+
+        # Offer PDF export
+        if PDF_AVAILABLE:
+            if console:
+                console.print()
+                export_pdf = Confirm.ask("Export analysis to PDF?", default=True)
+                if export_pdf:
+                    export_to_pdf(console, analysis)
+            else:
+                print()
+                export_pdf = input("Export analysis to PDF? (y/n): ").strip().lower()
+                if export_pdf == 'y':
+                    export_to_pdf(console, analysis)
 
         return 0
 
