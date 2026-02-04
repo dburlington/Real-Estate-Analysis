@@ -6,7 +6,9 @@ Analyzes Offering Memorandums for real estate investments
 
 import sys
 import os
+import argparse
 from pathlib import Path
+from datetime import datetime
 
 # Rich console for beautiful output
 try:
@@ -20,6 +22,13 @@ try:
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
+
+# PDF report generation
+try:
+    from src.report_generator import PDFReportGenerator
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
 
 from src.om_parser import OMParser
 from src.deal_analyzer import DealAnalyzer
@@ -428,15 +437,87 @@ def analyze_om(om_input: str, console) -> OMAnalysis:
     return analysis
 
 
+def generate_pdf_report(analysis: OMAnalysis, output_path: str, console) -> str:
+    """Generate a PDF report from the analysis"""
+    if not PDF_AVAILABLE:
+        raise ImportError(
+            "PDF generation requires reportlab. Install with: pip install reportlab"
+        )
+
+    generator = PDFReportGenerator()
+    report_path = generator.generate_report(analysis, output_path)
+
+    if console:
+        console.print(f"[green]PDF report generated: {report_path}[/green]")
+    else:
+        print(f"PDF report generated: {report_path}")
+
+    return report_path
+
+
+def get_default_pdf_name(analysis: OMAnalysis) -> str:
+    """Generate a default PDF filename based on property name"""
+    if analysis.property.name:
+        # Sanitize the property name for filename
+        name = analysis.property.name
+        name = "".join(c if c.isalnum() or c in ' -_' else '' for c in name)
+        name = name.replace(' ', '_')[:50]
+    else:
+        name = "om_analysis"
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{name}_report_{timestamp}.pdf"
+
+
+def parse_args():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(
+        description="Analyze Real Estate Offering Memorandums for pros, cons, and red flags",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python3 main.py                        # Interactive mode
+  python3 main.py document.pdf           # Analyze a PDF file
+  python3 main.py document.pdf -p        # Analyze and generate PDF report
+  python3 main.py document.pdf -o report.pdf  # Specify output PDF name
+        """
+    )
+    parser.add_argument(
+        'file',
+        nargs='?',
+        help='Path to OM file (PDF or TXT) to analyze'
+    )
+    parser.add_argument(
+        '-p', '--pdf',
+        action='store_true',
+        help='Generate a PDF report of the analysis'
+    )
+    parser.add_argument(
+        '-o', '--output',
+        help='Output path for the PDF report (implies --pdf)'
+    )
+    parser.add_argument(
+        '-q', '--quiet',
+        action='store_true',
+        help='Minimal console output (useful with --pdf)'
+    )
+    return parser.parse_args()
+
+
 def main():
     """Main entry point"""
-    console = create_console()
+    args = parse_args()
+    console = create_console() if not args.quiet else None
 
     try:
-        print_header(console)
+        if not args.quiet:
+            print_header(console)
 
-        # Get OM input
-        om_input = get_om_input(console)
+        # Get OM input - from args or interactive
+        if args.file:
+            om_input = f"FILE:{args.file}"
+        else:
+            om_input = get_om_input(console)
 
         if not om_input or om_input.strip() == "":
             if console:
@@ -451,37 +532,63 @@ def main():
             with console.status("[bold green]Analyzing OM..."):
                 analysis = analyze_om(om_input, console)
         else:
-            print("\nAnalyzing OM...")
-            analysis = analyze_om(om_input, console)
+            if not args.quiet:
+                print("\nAnalyzing OM...")
+            analysis = analyze_om(om_input, None)
 
-        # Display results
-        if console:
+        # Display results (unless quiet mode)
+        if not args.quiet:
+            if console:
+                console.print()
+
+            display_property_summary(console, analysis)
+            display_financial_summary(console, analysis)
+            display_fee_summary(console, analysis)
+            display_market_data(console, analysis)
+
+            # Display findings
+            display_findings(console, analysis.red_flags, "🚨 Red Flags", "red")
+            display_findings(console, analysis.cons, "⚠️  Concerns", "yellow")
+            display_findings(console, analysis.pros, "✅ Strengths", "green")
+
+            # Display recommendation
+            display_recommendation(console, analysis)
+
+            # Ask for detailed view
+            if console:
+                console.print()
+                show_details = Confirm.ask("Show detailed analysis?", default=True)
+                if show_details:
+                    display_detailed_findings(console, analysis)
+            elif not args.quiet:
+                print("\n")
+                show_details = input("Show detailed analysis? (y/n): ").strip().lower()
+                if show_details == 'y':
+                    display_detailed_findings(console, analysis)
+
+        # Handle PDF generation
+        generate_pdf = args.pdf or args.output
+
+        # If not specified via args, ask interactively
+        if not generate_pdf and not args.quiet and console:
             console.print()
+            generate_pdf = Confirm.ask("Generate PDF report?", default=False)
 
-        display_property_summary(console, analysis)
-        display_financial_summary(console, analysis)
-        display_fee_summary(console, analysis)
-        display_market_data(console, analysis)
+        if generate_pdf:
+            # Determine output path
+            if args.output:
+                output_path = args.output
+            else:
+                output_path = get_default_pdf_name(analysis)
 
-        # Display findings
-        display_findings(console, analysis.red_flags, "🚨 Red Flags", "red")
-        display_findings(console, analysis.cons, "⚠️  Concerns", "yellow")
-        display_findings(console, analysis.pros, "✅ Strengths", "green")
-
-        # Display recommendation
-        display_recommendation(console, analysis)
-
-        # Ask for detailed view
-        if console:
-            console.print()
-            show_details = Confirm.ask("Show detailed analysis?", default=True)
-            if show_details:
-                display_detailed_findings(console, analysis)
-        else:
-            print("\n")
-            show_details = input("Show detailed analysis? (y/n): ").strip().lower()
-            if show_details == 'y':
-                display_detailed_findings(console, analysis)
+            try:
+                generate_pdf_report(analysis, output_path, console)
+            except ImportError as e:
+                if console:
+                    console.print(f"[red]Error: {e}[/red]")
+                else:
+                    print(f"Error: {e}")
+                return 1
 
         return 0
 
@@ -503,6 +610,8 @@ def main():
             console.print_exception()
         else:
             print(f"Error analyzing OM: {e}")
+            import traceback
+            traceback.print_exc()
         return 1
 
 
