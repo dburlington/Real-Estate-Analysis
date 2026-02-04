@@ -11,7 +11,6 @@ import types
 def _setup_fake_pil():
     """Set up minimal PIL stub if real PIL fails to load"""
     if 'PIL' in sys.modules:
-        # PIL already loaded successfully, nothing to do
         try:
             from PIL import Image
             return  # Real PIL works fine
@@ -24,7 +23,7 @@ def _setup_fake_pil():
 
     # Create fake Image module with minimal interface
     fake_image = types.ModuleType('PIL.Image')
-    fake_image.Image = None  # Placeholder
+    fake_image.Image = None
     fake_image.open = lambda *args, **kwargs: None
     fake_image.LANCZOS = 1
     fake_image.BILINEAR = 2
@@ -44,7 +43,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    PageBreak, HRFlowable, ListFlowable, ListItem
+    PageBreak, HRFlowable
 )
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
 
@@ -54,17 +53,19 @@ from .models import OMAnalysis, Finding, RiskLevel, PropertyType
 class PDFReportGenerator:
     """Generates professional PDF reports from OM analysis"""
 
-    # Color scheme
+    # Color scheme - clean professional palette
     COLORS = {
-        'primary': colors.HexColor('#1a365d'),      # Dark blue
-        'secondary': colors.HexColor('#2c5282'),    # Medium blue
-        'accent': colors.HexColor('#3182ce'),       # Light blue
-        'success': colors.HexColor('#276749'),      # Green
-        'warning': colors.HexColor('#c05621'),      # Orange
-        'danger': colors.HexColor('#c53030'),       # Red
-        'light_gray': colors.HexColor('#f7fafc'),
-        'gray': colors.HexColor('#718096'),
-        'dark_gray': colors.HexColor('#2d3748'),
+        'primary': colors.HexColor('#1e3a5f'),      # Dark navy blue
+        'secondary': colors.HexColor('#2d5986'),    # Medium blue
+        'accent': colors.HexColor('#4a90d9'),       # Light blue
+        'success': colors.HexColor('#2e7d32'),      # Green
+        'warning': colors.HexColor('#ed6c02'),      # Orange
+        'danger': colors.HexColor('#d32f2f'),       # Red
+        'light_bg': colors.HexColor('#f8f9fa'),     # Very light gray
+        'alt_row': colors.HexColor('#f1f3f4'),      # Alternating row
+        'border': colors.HexColor('#dee2e6'),       # Light border
+        'text': colors.HexColor('#212529'),         # Dark text
+        'muted': colors.HexColor('#6c757d'),        # Muted text
     }
 
     def __init__(self):
@@ -77,88 +78,118 @@ class PDFReportGenerator:
         self.styles.add(ParagraphStyle(
             name='ReportTitle',
             parent=self.styles['Heading1'],
-            fontSize=24,
+            fontSize=26,
             textColor=self.COLORS['primary'],
-            spaceAfter=20,
+            spaceAfter=8,
             alignment=TA_CENTER,
+            fontName='Helvetica-Bold',
         ))
 
         # Section header style
         self.styles.add(ParagraphStyle(
             name='SectionHeader',
             parent=self.styles['Heading2'],
-            fontSize=14,
+            fontSize=13,
             textColor=self.COLORS['primary'],
-            spaceBefore=15,
+            spaceBefore=18,
             spaceAfter=10,
-            borderPadding=5,
+            fontName='Helvetica-Bold',
+            borderPadding=(0, 0, 3, 0),
+            borderWidth=0,
+            borderColor=self.COLORS['primary'],
         ))
 
         # Subsection header
         self.styles.add(ParagraphStyle(
             name='SubsectionHeader',
             parent=self.styles['Heading3'],
-            fontSize=12,
+            fontSize=11,
             textColor=self.COLORS['secondary'],
-            spaceBefore=10,
+            spaceBefore=12,
             spaceAfter=6,
+            fontName='Helvetica-Bold',
         ))
 
-        # Custom body text (BodyText already exists in base styles)
+        # Table cell styles
+        self.styles.add(ParagraphStyle(
+            name='TableLabel',
+            parent=self.styles['Normal'],
+            fontSize=9,
+            textColor=self.COLORS['text'],
+            fontName='Helvetica-Bold',
+            leading=12,
+        ))
+
+        self.styles.add(ParagraphStyle(
+            name='TableValue',
+            parent=self.styles['Normal'],
+            fontSize=9,
+            textColor=self.COLORS['text'],
+            fontName='Helvetica',
+            leading=12,
+            wordWrap='CJK',  # Enable word wrapping
+        ))
+
+        # Body text
         self.styles.add(ParagraphStyle(
             name='CustomBodyText',
             parent=self.styles['Normal'],
-            fontSize=10,
-            textColor=self.COLORS['dark_gray'],
+            fontSize=9,
+            textColor=self.COLORS['text'],
             spaceAfter=6,
-            alignment=TA_JUSTIFY,
+            leading=13,
         ))
 
         # Finding styles
         self.styles.add(ParagraphStyle(
             name='ProText',
             parent=self.styles['Normal'],
-            fontSize=10,
+            fontSize=9,
             textColor=self.COLORS['success'],
-            leftIndent=15,
-            spaceAfter=4,
+            leftIndent=12,
+            spaceAfter=3,
+            fontName='Helvetica-Bold',
         ))
 
         self.styles.add(ParagraphStyle(
             name='ConText',
             parent=self.styles['Normal'],
-            fontSize=10,
+            fontSize=9,
             textColor=self.COLORS['warning'],
-            leftIndent=15,
-            spaceAfter=4,
+            leftIndent=12,
+            spaceAfter=3,
+            fontName='Helvetica-Bold',
         ))
 
         self.styles.add(ParagraphStyle(
             name='RedFlagText',
             parent=self.styles['Normal'],
-            fontSize=10,
+            fontSize=9,
             textColor=self.COLORS['danger'],
-            leftIndent=15,
-            spaceAfter=4,
+            leftIndent=12,
+            spaceAfter=3,
+            fontName='Helvetica-Bold',
         ))
 
-        # Metric value style
-        self.styles.add(ParagraphStyle(
-            name='MetricValue',
-            parent=self.styles['Normal'],
-            fontSize=11,
-            textColor=self.COLORS['primary'],
-            alignment=TA_RIGHT,
-        ))
-
-        # Small text for details
+        # Detail text for findings
         self.styles.add(ParagraphStyle(
             name='DetailText',
             parent=self.styles['Normal'],
-            fontSize=9,
-            textColor=self.COLORS['gray'],
-            leftIndent=25,
+            fontSize=8,
+            textColor=self.COLORS['muted'],
+            leftIndent=20,
             spaceAfter=8,
+            leading=11,
+        ))
+
+        # Metric detail
+        self.styles.add(ParagraphStyle(
+            name='MetricDetail',
+            parent=self.styles['Normal'],
+            fontSize=8,
+            textColor=self.COLORS['muted'],
+            leftIndent=20,
+            spaceAfter=10,
         ))
 
     def generate_report(self, analysis: OMAnalysis, output_path: str) -> str:
@@ -166,16 +197,15 @@ class PDFReportGenerator:
         doc = SimpleDocTemplate(
             output_path,
             pagesize=letter,
-            rightMargin=0.75 * inch,
-            leftMargin=0.75 * inch,
-            topMargin=0.75 * inch,
-            bottomMargin=0.75 * inch,
+            rightMargin=0.6 * inch,
+            leftMargin=0.6 * inch,
+            topMargin=0.5 * inch,
+            bottomMargin=0.5 * inch,
         )
 
-        # Build the document content
         story = []
 
-        # Title and header
+        # Header
         story.extend(self._build_header(analysis))
 
         # Executive Summary
@@ -193,17 +223,16 @@ class PDFReportGenerator:
         # Sponsor Fees
         story.extend(self._build_fees_section(analysis))
 
-        # Market Data (if available)
+        # Market Data
         if self._has_market_data(analysis):
             story.extend(self._build_market_section(analysis))
 
-        # Page break before analysis
+        # Page break before detailed analysis
         story.append(PageBreak())
 
         # Detailed Analysis
         story.extend(self._build_analysis_section(analysis))
 
-        # Build the PDF
         doc.build(story)
         return output_path
 
@@ -211,49 +240,48 @@ class PDFReportGenerator:
         """Build the report header"""
         elements = []
 
-        # Property name as title
-        property_name = analysis.property.name or "Real Estate Investment"
+        # Property name
+        property_name = analysis.property.name or "Real Estate Investment Analysis"
         elements.append(Paragraph(property_name, self.styles['ReportTitle']))
 
-        # Subtitle with location
+        # Location subtitle
         location_parts = []
         if analysis.property.city:
             location_parts.append(analysis.property.city)
         if analysis.property.state:
             location_parts.append(analysis.property.state)
         if location_parts:
-            location = ", ".join(location_parts)
             elements.append(Paragraph(
-                f"<i>{location}</i>",
+                ", ".join(location_parts),
                 ParagraphStyle(
-                    'Subtitle',
+                    'LocationLine',
                     parent=self.styles['Normal'],
-                    fontSize=12,
-                    textColor=self.COLORS['gray'],
+                    fontSize=11,
+                    textColor=self.COLORS['muted'],
                     alignment=TA_CENTER,
-                    spaceAfter=5,
+                    spaceAfter=4,
                 )
             ))
 
         # Report date
         elements.append(Paragraph(
-            f"Analysis Report - {datetime.now().strftime('%B %d, %Y')}",
+            f"Analysis Date: {datetime.now().strftime('%B %d, %Y')}",
             ParagraphStyle(
                 'DateLine',
                 parent=self.styles['Normal'],
-                fontSize=10,
-                textColor=self.COLORS['gray'],
+                fontSize=9,
+                textColor=self.COLORS['muted'],
                 alignment=TA_CENTER,
-                spaceAfter=20,
+                spaceAfter=15,
             )
         ))
 
-        # Horizontal line
+        # Divider line
         elements.append(HRFlowable(
             width="100%",
-            thickness=2,
+            thickness=1.5,
             color=self.COLORS['primary'],
-            spaceAfter=20,
+            spaceAfter=15,
         ))
 
         return elements
@@ -263,11 +291,10 @@ class PDFReportGenerator:
         elements = []
         elements.append(Paragraph("EXECUTIVE SUMMARY", self.styles['SectionHeader']))
 
-        # Score and recommendation box
         score = analysis.overall_score or 0
         recommendation = analysis.recommendation or "Analysis pending"
 
-        # Determine score color
+        # Score color
         if score >= 60:
             score_color = self.COLORS['success']
         elif score >= 45:
@@ -275,64 +302,62 @@ class PDFReportGenerator:
         else:
             score_color = self.COLORS['danger']
 
-        # Summary table
+        # Summary data with Paragraphs for wrapping
         summary_data = [
-            ['Deal Score', f'{score}/100'],
-            ['Recommendation', recommendation],
-            ['Pros Identified', str(len(analysis.pros))],
-            ['Cons Identified', str(len(analysis.cons))],
-            ['Red Flags', str(len(analysis.red_flags))],
+            [Paragraph('<b>Deal Score</b>', self.styles['TableLabel']),
+             Paragraph(f'<b><font size="14">{score}/100</font></b>',
+                      ParagraphStyle('ScoreValue', parent=self.styles['TableValue'],
+                                    textColor=score_color, fontSize=14))],
+            [Paragraph('<b>Recommendation</b>', self.styles['TableLabel']),
+             Paragraph(recommendation, self.styles['TableValue'])],
+            [Paragraph('<b>Strengths</b>', self.styles['TableLabel']),
+             Paragraph(str(len(analysis.pros)), self.styles['TableValue'])],
+            [Paragraph('<b>Concerns</b>', self.styles['TableLabel']),
+             Paragraph(str(len(analysis.cons)), self.styles['TableValue'])],
+            [Paragraph('<b>Red Flags</b>', self.styles['TableLabel']),
+             Paragraph(str(len(analysis.red_flags)), self.styles['TableValue'])],
         ]
 
-        summary_table = Table(summary_data, colWidths=[2.5 * inch, 4 * inch])
+        summary_table = Table(summary_data, colWidths=[2.2 * inch, 4.5 * inch])
         summary_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), self.COLORS['light_gray']),
-            ('TEXTCOLOR', (0, 0), (0, -1), self.COLORS['primary']),
-            ('TEXTCOLOR', (1, 0), (1, 0), score_color),
-            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('FONTSIZE', (1, 0), (1, 0), 14),
-            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+            ('BACKGROUND', (0, 0), (0, -1), self.COLORS['light_bg']),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('PADDING', (0, 0), (-1, -1), 8),
-            ('GRID', (0, 0), (-1, -1), 0.5, self.COLORS['gray']),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ('LINEBELOW', (0, 0), (-1, -2), 0.5, self.COLORS['border']),
+            ('LINEAFTER', (0, 0), (0, -1), 0.5, self.COLORS['border']),
+            ('BOX', (0, 0), (-1, -1), 1, self.COLORS['border']),
         ]))
         elements.append(summary_table)
-        elements.append(Spacer(1, 15))
+        elements.append(Spacer(1, 12))
 
-        # Quick highlights
+        # Key highlights
         if analysis.pros:
             elements.append(Paragraph("Key Strengths:", self.styles['SubsectionHeader']))
-            for pro in analysis.pros[:3]:  # Top 3 pros
-                elements.append(Paragraph(
-                    f"+ {pro.description}",
-                    self.styles['ProText']
-                ))
+            for pro in analysis.pros[:3]:
+                elements.append(Paragraph(f"• {pro.description}", self.styles['ProText']))
 
         if analysis.red_flags:
-            elements.append(Spacer(1, 10))
+            elements.append(Spacer(1, 8))
             elements.append(Paragraph("Critical Concerns:", self.styles['SubsectionHeader']))
-            for flag in analysis.red_flags[:3]:  # Top 3 red flags
-                elements.append(Paragraph(
-                    f"! {flag.description}",
-                    self.styles['RedFlagText']
-                ))
+            for flag in analysis.red_flags[:3]:
+                elements.append(Paragraph(f"• {flag.description}", self.styles['RedFlagText']))
 
-        elements.append(Spacer(1, 15))
+        elements.append(Spacer(1, 12))
         return elements
 
     def _build_property_section(self, analysis: OMAnalysis) -> list:
         """Build the property details section"""
         elements = []
-        elements.append(Paragraph("PROPERTY DETAILS", self.styles['SectionHeader']))
+        elements.append(Paragraph("PROPERTY OVERVIEW", self.styles['SectionHeader']))
 
         prop = analysis.property
         data = []
 
         if prop.property_type and prop.property_type != PropertyType.UNKNOWN:
-            data.append(['Property Type', prop.property_type.value])
+            data.append(['Property Type', prop.property_type.value.replace('_', ' ').title()])
         if prop.address:
             data.append(['Address', prop.address])
         if prop.city or prop.state:
@@ -341,114 +366,102 @@ class PDFReportGenerator:
         if prop.year_built:
             age = datetime.now().year - prop.year_built
             data.append(['Year Built', f"{prop.year_built} ({age} years old)"])
-        if prop.total_units:
-            data.append(['Total Units/Buildings', str(prop.total_units)])
         if prop.num_buildings:
-            data.append(['Number of Buildings', str(prop.num_buildings)])
+            data.append(['Buildings', str(prop.num_buildings)])
+        if prop.total_units and prop.total_units != prop.num_buildings:
+            data.append(['Total Units', str(prop.total_units)])
         if prop.num_tenants:
-            data.append(['Number of Tenants', str(prop.num_tenants)])
+            data.append(['Tenants', str(prop.num_tenants)])
         if prop.total_sqft:
-            data.append(['Total Square Feet', f"{prop.total_sqft:,.0f} SF"])
+            data.append(['Square Footage', f"{prop.total_sqft:,.0f} SF"])
         if prop.walt_years:
-            data.append(['WALT (Lease Term)', f"{prop.walt_years:.1f} years"])
+            data.append(['Avg. Lease Term (WALT)', f"{prop.walt_years:.1f} years"])
         if prop.lot_size_acres:
-            data.append(['Lot Size', f"{prop.lot_size_acres:.2f} acres"])
+            data.append(['Land Area', f"{prop.lot_size_acres:.2f} acres"])
         if prop.amenities:
-            data.append(['Features', ', '.join(prop.amenities[:5])])
+            data.append(['Features', ', '.join(prop.amenities[:6])])
 
         if data:
             table = self._create_data_table(data)
             elements.append(table)
         else:
             elements.append(Paragraph(
-                "Property details not available in the offering memorandum.",
+                "Property details not available.",
                 self.styles['CustomBodyText']
             ))
 
-        elements.append(Spacer(1, 15))
+        elements.append(Spacer(1, 12))
         return elements
 
     def _build_financials_section(self, analysis: OMAnalysis) -> list:
         """Build the financial metrics section"""
         elements = []
-        elements.append(Paragraph("FINANCIAL METRICS", self.styles['SectionHeader']))
+        elements.append(Paragraph("FINANCIAL SUMMARY", self.styles['SectionHeader']))
 
         fin = analysis.financials
-        data = []
 
+        # Valuation data
+        val_data = []
         if fin.asking_price:
-            data.append(['Asking Price', f"${fin.asking_price:,.0f}"])
+            val_data.append(['Purchase Price', f"${fin.asking_price:,.0f}"])
         if fin.price_per_unit:
-            data.append(['Price Per Unit', f"${fin.price_per_unit:,.0f}"])
+            val_data.append(['Price Per Unit', f"${fin.price_per_unit:,.0f}"])
         if fin.price_per_sqft:
-            data.append(['Price Per SF', f"${fin.price_per_sqft:,.2f}"])
+            val_data.append(['Price Per SF', f"${fin.price_per_sqft:,.2f}"])
         if fin.current_cap_rate:
-            data.append(['Current Cap Rate', f"{fin.current_cap_rate:.2%}"])
+            val_data.append(['Going-In Cap Rate', f"{fin.current_cap_rate:.2%}"])
         if fin.proforma_cap_rate:
-            data.append(['Exit/Proforma Cap Rate', f"{fin.proforma_cap_rate:.2%}"])
+            val_data.append(['Exit Cap Rate', f"{fin.proforma_cap_rate:.2%}"])
         if fin.current_noi:
-            data.append(['Current NOI', f"${fin.current_noi:,.0f}"])
-        if fin.proforma_noi:
-            data.append(['Proforma NOI', f"${fin.proforma_noi:,.0f}"])
+            val_data.append(['Net Operating Income', f"${fin.current_noi:,.0f}"])
         if fin.current_occupancy:
-            data.append(['Occupancy', f"{fin.current_occupancy:.1%}"])
-        if fin.average_rent:
-            data.append(['Average Rent', f"${fin.average_rent:,.2f}"])
-        if fin.market_rent:
-            data.append(['Market Rent', f"${fin.market_rent:,.2f}"])
-        if fin.expense_ratio:
-            data.append(['Expense Ratio', f"{fin.expense_ratio:.1%}"])
+            val_data.append(['Occupancy', f"{fin.current_occupancy:.1%}"])
 
         # Return metrics
-        elements.append(Paragraph("Returns", self.styles['SubsectionHeader']))
         return_data = []
         if fin.irr_projected:
             return_data.append(['Projected IRR', f"{fin.irr_projected:.1%}"])
         if fin.equity_multiple:
             return_data.append(['Equity Multiple', f"{fin.equity_multiple:.2f}x"])
         if fin.cash_on_cash_return:
-            return_data.append(['Cash-on-Cash Return', f"{fin.cash_on_cash_return:.1%}"])
+            return_data.append(['Cash-on-Cash', f"{fin.cash_on_cash_return:.1%}"])
 
-        if data:
-            elements.append(Paragraph("Valuation & Income", self.styles['SubsectionHeader']))
-            table = self._create_data_table(data)
+        if val_data:
+            elements.append(Paragraph("Valuation", self.styles['SubsectionHeader']))
+            table = self._create_data_table(val_data)
             elements.append(table)
 
         if return_data:
-            elements.append(Spacer(1, 10))
+            elements.append(Spacer(1, 8))
             elements.append(Paragraph("Projected Returns", self.styles['SubsectionHeader']))
             table = self._create_data_table(return_data)
             elements.append(table)
 
-        if not data and not return_data:
+        if not val_data and not return_data:
             elements.append(Paragraph(
-                "Financial metrics not available in the offering memorandum.",
+                "Financial metrics not available.",
                 self.styles['CustomBodyText']
             ))
 
-        elements.append(Spacer(1, 15))
+        elements.append(Spacer(1, 12))
         return elements
 
     def _build_deal_terms_section(self, analysis: OMAnalysis) -> list:
         """Build the deal terms section"""
         elements = []
-        elements.append(Paragraph("DEAL TERMS", self.styles['SectionHeader']))
+        elements.append(Paragraph("DEAL STRUCTURE", self.styles['SectionHeader']))
 
         terms = analysis.deal_terms
         data = []
 
         if terms.loan_amount:
-            data.append(['Loan Amount', f"${terms.loan_amount:,.0f}"])
+            data.append(['Senior Debt', f"${terms.loan_amount:,.0f}"])
         if terms.loan_to_value:
-            data.append(['Loan-to-Value (LTV)', f"{terms.loan_to_value:.1%}"])
+            data.append(['Loan-to-Value', f"{terms.loan_to_value:.1%}"])
         if terms.interest_rate:
             data.append(['Interest Rate', f"{terms.interest_rate:.2%}"])
         if terms.loan_type:
             data.append(['Loan Type', terms.loan_type])
-        if terms.loan_term_years:
-            data.append(['Loan Term', f"{terms.loan_term_years} years"])
-        if terms.amortization_years:
-            data.append(['Amortization', f"{terms.amortization_years} years"])
         if terms.minimum_investment:
             data.append(['Minimum Investment', f"${terms.minimum_investment:,.0f}"])
         if terms.preferred_return:
@@ -456,18 +469,18 @@ class PDFReportGenerator:
         if terms.profit_split:
             data.append(['Profit Split (LP/GP)', terms.profit_split])
         if terms.hold_period_years:
-            data.append(['Target Hold Period', f"{terms.hold_period_years} years"])
+            data.append(['Hold Period', f"{terms.hold_period_years} years"])
 
         if data:
             table = self._create_data_table(data)
             elements.append(table)
         else:
             elements.append(Paragraph(
-                "Deal terms not available in the offering memorandum.",
+                "Deal terms not available.",
                 self.styles['CustomBodyText']
             ))
 
-        elements.append(Spacer(1, 15))
+        elements.append(Spacer(1, 12))
         return elements
 
     def _build_fees_section(self, analysis: OMAnalysis) -> list:
@@ -481,55 +494,42 @@ class PDFReportGenerator:
         if fees.acquisition_fee:
             data.append(['Acquisition Fee', f"{fees.acquisition_fee:.2%}"])
         if fees.asset_management_fee:
-            data.append(['Asset Management Fee', f"{fees.asset_management_fee:.2%} annually"])
+            data.append(['Asset Management', f"{fees.asset_management_fee:.2%} /year"])
         if fees.property_management_fee:
-            data.append(['Property Management Fee', f"{fees.property_management_fee:.2%}"])
+            data.append(['Property Management', f"{fees.property_management_fee:.2%}"])
         if fees.construction_management_fee:
-            data.append(['Construction Mgmt Fee', f"{fees.construction_management_fee:.2%}"])
+            data.append(['Construction Mgmt', f"{fees.construction_management_fee:.2%}"])
         if fees.disposition_fee:
             data.append(['Disposition Fee', f"{fees.disposition_fee:.2%}"])
-        if fees.refinance_fee:
-            data.append(['Refinance Fee', f"{fees.refinance_fee:.2%}"])
-
-        # Total fee load
         if fees.estimated_total_fees_over_hold:
-            data.append(['Est. Total Fees (over hold)', f"{fees.estimated_total_fees_over_hold:.1%}"])
+            data.append(['Total Est. Fees', f"{fees.estimated_total_fees_over_hold:.1%}"])
 
         if data:
             table = self._create_data_table(data)
             elements.append(table)
-
-            # Add benchmark note
-            elements.append(Spacer(1, 8))
+            elements.append(Spacer(1, 6))
             elements.append(Paragraph(
-                "<i>Industry benchmarks: Acquisition 1%, Asset Mgmt 1.5%/yr, Property Mgmt 5%, Disposition 1%</i>",
-                ParagraphStyle(
-                    'BenchmarkNote',
-                    parent=self.styles['Normal'],
-                    fontSize=8,
-                    textColor=self.COLORS['gray'],
-                )
+                "<i>Benchmarks: Acquisition 1%, Asset Mgmt 1.5%/yr, Property Mgmt 5%, Disposition 1%</i>",
+                ParagraphStyle('Note', parent=self.styles['Normal'],
+                              fontSize=8, textColor=self.COLORS['muted'])
             ))
         else:
             elements.append(Paragraph(
-                "Fee structure not disclosed in the offering memorandum. Request detailed fee schedule.",
+                "Fee structure not disclosed. Request detailed fee schedule.",
                 self.styles['CustomBodyText']
             ))
 
-        elements.append(Spacer(1, 15))
+        elements.append(Spacer(1, 12))
         return elements
 
     def _has_market_data(self, analysis: OMAnalysis) -> bool:
-        """Check if there's meaningful market data to display"""
+        """Check if meaningful market data exists"""
         market = analysis.market_data
         return any([
             market.market_vacancy_rate,
             market.market_rent_psf,
             market.market_cap_rate,
             market.rent_growth_1yr,
-            market.job_growth,
-            market.population_growth,
-            market.median_household_income,
         ])
 
     def _build_market_section(self, analysis: OMAnalysis) -> list:
@@ -541,37 +541,23 @@ class PDFReportGenerator:
         data = []
 
         if market.market_vacancy_rate:
-            data.append(['Market Vacancy Rate', f"{market.market_vacancy_rate:.1%}"])
+            data.append(['Market Vacancy', f"{market.market_vacancy_rate:.1%}"])
         if market.market_rent_psf:
             data.append(['Market Rent (PSF)', f"${market.market_rent_psf:.2f}"])
         if market.market_cap_rate:
             data.append(['Market Cap Rate', f"{market.market_cap_rate:.2%}"])
         if market.rent_growth_1yr:
-            data.append(['1-Year Rent Growth', f"{market.rent_growth_1yr:.1%}"])
+            data.append(['Rent Growth (1yr)', f"{market.rent_growth_1yr:.1%}"])
         if market.job_growth:
             data.append(['Job Growth', f"{market.job_growth:.1%}"])
-        if market.population_growth:
-            data.append(['Population Growth', f"{market.population_growth:.1%}"])
         if market.median_household_income:
-            data.append(['Median Household Income', f"${market.median_household_income:,.0f}"])
-        if market.unemployment_rate:
-            data.append(['Unemployment Rate', f"{market.unemployment_rate:.1%}"])
-        if market.walk_score:
-            data.append(['Walk Score', str(market.walk_score)])
+            data.append(['Median Income', f"${market.median_household_income:,.0f}"])
 
         if data:
             table = self._create_data_table(data)
             elements.append(table)
 
-        if market.major_employers:
-            elements.append(Spacer(1, 10))
-            elements.append(Paragraph("Major Employers:", self.styles['SubsectionHeader']))
-            elements.append(Paragraph(
-                ", ".join(market.major_employers[:5]),
-                self.styles['CustomBodyText']
-            ))
-
-        elements.append(Spacer(1, 15))
+        elements.append(Spacer(1, 12))
         return elements
 
     def _build_analysis_section(self, analysis: OMAnalysis) -> list:
@@ -579,103 +565,72 @@ class PDFReportGenerator:
         elements = []
         elements.append(Paragraph("DETAILED ANALYSIS", self.styles['SectionHeader']))
 
-        # Pros
+        # Strengths
         if analysis.pros:
             elements.append(Paragraph("Strengths", self.styles['SubsectionHeader']))
             for i, pro in enumerate(analysis.pros, 1):
                 elements.append(Paragraph(
-                    f"<b>{i}. {pro.description}</b> [{pro.category}]",
+                    f"{i}. {pro.description}",
                     self.styles['ProText']
                 ))
                 if pro.details:
-                    elements.append(Paragraph(
-                        pro.details,
-                        self.styles['DetailText']
-                    ))
+                    elements.append(Paragraph(pro.details, self.styles['DetailText']))
                 if pro.actual_value and pro.benchmark_value:
                     elements.append(Paragraph(
-                        f"<i>Value: {pro.actual_value} | Benchmark: {pro.benchmark_value}</i>",
-                        ParagraphStyle(
-                            'MetricDetail',
-                            parent=self.styles['Normal'],
-                            fontSize=8,
-                            textColor=self.COLORS['gray'],
-                            leftIndent=25,
-                            spaceAfter=10,
-                        )
+                        f"Value: {pro.actual_value} | Benchmark: {pro.benchmark_value}",
+                        self.styles['MetricDetail']
                     ))
-            elements.append(Spacer(1, 15))
+            elements.append(Spacer(1, 10))
 
-        # Cons
+        # Concerns
         if analysis.cons:
             elements.append(Paragraph("Concerns", self.styles['SubsectionHeader']))
             for i, con in enumerate(analysis.cons, 1):
                 elements.append(Paragraph(
-                    f"<b>{i}. {con.description}</b> [{con.category}]",
+                    f"{i}. {con.description}",
                     self.styles['ConText']
                 ))
                 if con.details:
-                    elements.append(Paragraph(
-                        con.details,
-                        self.styles['DetailText']
-                    ))
+                    elements.append(Paragraph(con.details, self.styles['DetailText']))
                 if con.actual_value and con.benchmark_value:
                     elements.append(Paragraph(
-                        f"<i>Value: {con.actual_value} | Benchmark: {con.benchmark_value}</i>",
-                        ParagraphStyle(
-                            'MetricDetail',
-                            parent=self.styles['Normal'],
-                            fontSize=8,
-                            textColor=self.COLORS['gray'],
-                            leftIndent=25,
-                            spaceAfter=10,
-                        )
+                        f"Value: {con.actual_value} | Benchmark: {con.benchmark_value}",
+                        self.styles['MetricDetail']
                     ))
-            elements.append(Spacer(1, 15))
+            elements.append(Spacer(1, 10))
 
         # Red Flags
         if analysis.red_flags:
             elements.append(Paragraph("Red Flags", self.styles['SubsectionHeader']))
             for i, flag in enumerate(analysis.red_flags, 1):
-                risk_label = f" ({flag.risk_level.value})" if flag.risk_level else ""
+                risk = f" - {flag.risk_level.value}" if flag.risk_level else ""
                 elements.append(Paragraph(
-                    f"<b>{i}. {flag.description}</b> [{flag.category}]{risk_label}",
+                    f"{i}. {flag.description}{risk}",
                     self.styles['RedFlagText']
                 ))
                 if flag.details:
-                    elements.append(Paragraph(
-                        flag.details,
-                        self.styles['DetailText']
-                    ))
+                    elements.append(Paragraph(flag.details, self.styles['DetailText']))
                 if flag.actual_value and flag.benchmark_value:
                     elements.append(Paragraph(
-                        f"<i>Value: {flag.actual_value} | Benchmark: {flag.benchmark_value}</i>",
-                        ParagraphStyle(
-                            'MetricDetail',
-                            parent=self.styles['Normal'],
-                            fontSize=8,
-                            textColor=self.COLORS['gray'],
-                            leftIndent=25,
-                            spaceAfter=10,
-                        )
+                        f"Value: {flag.actual_value} | Benchmark: {flag.benchmark_value}",
+                        self.styles['MetricDetail']
                     ))
-            elements.append(Spacer(1, 15))
+            elements.append(Spacer(1, 10))
 
-        # Final recommendation box
+        # Final recommendation
         elements.append(HRFlowable(
             width="100%",
             thickness=1,
             color=self.COLORS['primary'],
-            spaceBefore=15,
-            spaceAfter=15,
+            spaceBefore=12,
+            spaceAfter=12,
         ))
 
-        elements.append(Paragraph("INVESTMENT RECOMMENDATION", self.styles['SectionHeader']))
+        elements.append(Paragraph("RECOMMENDATION", self.styles['SectionHeader']))
 
-        recommendation = analysis.recommendation or "Complete analysis pending"
+        recommendation = analysis.recommendation or "Analysis pending"
         score = analysis.overall_score or 0
 
-        # Determine recommendation color
         if score >= 60:
             rec_color = self.COLORS['success']
         elif score >= 45:
@@ -686,47 +641,59 @@ class PDFReportGenerator:
         elements.append(Paragraph(
             f"<b>{recommendation}</b>",
             ParagraphStyle(
-                'FinalRecommendation',
+                'FinalRec',
                 parent=self.styles['Normal'],
-                fontSize=12,
+                fontSize=11,
                 textColor=rec_color,
                 alignment=TA_CENTER,
-                spaceBefore=10,
-                spaceAfter=20,
+                spaceBefore=8,
+                spaceAfter=15,
             )
         ))
 
         # Disclaimer
         elements.append(Paragraph(
-            "<i>Disclaimer: This analysis is for informational purposes only and should not be considered "
-            "investment advice. Always conduct your own due diligence and consult with qualified "
-            "professionals before making investment decisions.</i>",
+            "This analysis is for informational purposes only and does not constitute investment advice. "
+            "Conduct your own due diligence and consult qualified professionals before investing.",
             ParagraphStyle(
                 'Disclaimer',
                 parent=self.styles['Normal'],
-                fontSize=8,
-                textColor=self.COLORS['gray'],
+                fontSize=7,
+                textColor=self.COLORS['muted'],
                 alignment=TA_CENTER,
-                spaceBefore=30,
+                spaceBefore=20,
             )
         ))
 
         return elements
 
     def _create_data_table(self, data: list) -> Table:
-        """Create a consistently styled data table"""
-        table = Table(data, colWidths=[2.5 * inch, 4 * inch])
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), self.COLORS['light_gray']),
-            ('TEXTCOLOR', (0, 0), (0, -1), self.COLORS['primary']),
-            ('TEXTCOLOR', (1, 0), (1, -1), self.COLORS['dark_gray']),
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('PADDING', (0, 0), (-1, -1), 6),
-            ('GRID', (0, 0), (-1, -1), 0.5, self.COLORS['gray']),
-        ]))
+        """Create a clean, styled data table with word wrapping"""
+        # Convert to Paragraphs for word wrapping
+        formatted_data = []
+        for row in data:
+            formatted_data.append([
+                Paragraph(f"<b>{row[0]}</b>", self.styles['TableLabel']),
+                Paragraph(str(row[1]), self.styles['TableValue'])
+            ])
+
+        table = Table(formatted_data, colWidths=[2.0 * inch, 4.7 * inch])
+
+        # Build style with alternating rows
+        style_commands = [
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('LINEBELOW', (0, 0), (-1, -2), 0.5, self.COLORS['border']),
+            ('BOX', (0, 0), (-1, -1), 0.5, self.COLORS['border']),
+        ]
+
+        # Add alternating row backgrounds
+        for i in range(len(formatted_data)):
+            if i % 2 == 0:
+                style_commands.append(('BACKGROUND', (0, i), (-1, i), self.COLORS['light_bg']))
+
+        table.setStyle(TableStyle(style_commands))
         return table
