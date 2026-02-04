@@ -409,33 +409,49 @@ class OMParser:
         'financing_fee': r'(?:financing\s*fee|loan\s*fee|origination\s*fee|debt\s*broker\s*fee)[:\s]*([\d.]+)\s*%?',
     }
 
-    PROPERTY_TYPES = {
-        'multifamily': PropertyType.MULTIFAMILY,
-        'multi-family': PropertyType.MULTIFAMILY,
-        'apartment': PropertyType.MULTIFAMILY,
-        'residential': PropertyType.MULTIFAMILY,
-        'garden style': PropertyType.MULTIFAMILY,
-        'mid-rise': PropertyType.MULTIFAMILY,
-        'high-rise': PropertyType.MULTIFAMILY,
-        'office': PropertyType.OFFICE,
-        'retail': PropertyType.RETAIL,
-        'shopping': PropertyType.RETAIL,
-        'strip center': PropertyType.RETAIL,
-        'industrial': PropertyType.INDUSTRIAL,
-        'warehouse': PropertyType.INDUSTRIAL,
-        'logistics': PropertyType.INDUSTRIAL,
-        'distribution': PropertyType.INDUSTRIAL,
-        'flex': PropertyType.INDUSTRIAL,
-        'mixed-use': PropertyType.MIXED_USE,
-        'mixed use': PropertyType.MIXED_USE,
-        'hotel': PropertyType.HOTEL,
-        'hospitality': PropertyType.HOTEL,
-        'self-storage': PropertyType.SELF_STORAGE,
-        'storage': PropertyType.SELF_STORAGE,
-        'senior': PropertyType.SENIOR_HOUSING,
-        'assisted living': PropertyType.SENIOR_HOUSING,
-        'student': PropertyType.STUDENT_HOUSING,
-    }
+    # Property types ordered by specificity - more specific types first
+    # This ensures "industrial" is detected before generic terms like "residential"
+    PROPERTY_TYPE_KEYWORDS = [
+        # Industrial - check first (most specific)
+        ('industrial', PropertyType.INDUSTRIAL),
+        ('warehouse', PropertyType.INDUSTRIAL),
+        ('distribution', PropertyType.INDUSTRIAL),
+        ('logistics', PropertyType.INDUSTRIAL),
+        ('manufacturing', PropertyType.INDUSTRIAL),
+        ('flex space', PropertyType.INDUSTRIAL),
+        # Self-storage
+        ('self-storage', PropertyType.SELF_STORAGE),
+        ('self storage', PropertyType.SELF_STORAGE),
+        # Hotel/Hospitality
+        ('hotel', PropertyType.HOTEL),
+        ('hospitality', PropertyType.HOTEL),
+        ('motel', PropertyType.HOTEL),
+        # Senior Housing
+        ('senior housing', PropertyType.SENIOR_HOUSING),
+        ('assisted living', PropertyType.SENIOR_HOUSING),
+        ('memory care', PropertyType.SENIOR_HOUSING),
+        # Student Housing
+        ('student housing', PropertyType.STUDENT_HOUSING),
+        ('student apartment', PropertyType.STUDENT_HOUSING),
+        # Mixed Use
+        ('mixed-use', PropertyType.MIXED_USE),
+        ('mixed use', PropertyType.MIXED_USE),
+        # Office
+        ('office', PropertyType.OFFICE),
+        ('office building', PropertyType.OFFICE),
+        # Retail
+        ('retail', PropertyType.RETAIL),
+        ('shopping', PropertyType.RETAIL),
+        ('strip center', PropertyType.RETAIL),
+        ('shopping center', PropertyType.RETAIL),
+        # Multifamily - check last (most generic)
+        ('multifamily', PropertyType.MULTIFAMILY),
+        ('multi-family', PropertyType.MULTIFAMILY),
+        ('apartment', PropertyType.MULTIFAMILY),
+        ('garden style', PropertyType.MULTIFAMILY),
+        ('mid-rise', PropertyType.MULTIFAMILY),
+        ('high-rise', PropertyType.MULTIFAMILY),
+    ]
 
     def __init__(self):
         self.raw_text = ""
@@ -648,8 +664,8 @@ class OMParser:
                     details.zip_code = csz_match.group(3)
                 break
 
-        # Extract property type
-        for keyword, prop_type in self.PROPERTY_TYPES.items():
+        # Extract property type (keywords ordered by specificity - industrial before residential)
+        for keyword, prop_type in self.PROPERTY_TYPE_KEYWORDS:
             if keyword in text_lower:
                 details.property_type = prop_type
                 break
@@ -747,17 +763,38 @@ class OMParser:
                     details.lot_size_acres = lot_size
                     break
 
-        # Extract amenities / features for industrial
-        amenity_keywords = [
-            'pool', 'gym', 'fitness', 'clubhouse', 'parking', 'garage',
-            'laundry', 'playground', 'dog park', 'business center',
-            'concierge', 'rooftop', 'balcony', 'patio', 'storage',
-            'tennis', 'basketball', 'volleyball', 'grill', 'bbq',
-            'theater', 'yoga', 'spa', 'sauna', 'package locker',
-            # Industrial features
-            'dock doors', 'drive-in', 'clear height', 'sprinkler',
-            'hvac', 'led lighting', 'trailer parking', 'rail access'
-        ]
+        # Extract amenities / features based on property type
+        if details.property_type == PropertyType.INDUSTRIAL:
+            # Industrial property features
+            amenity_keywords = [
+                'dock doors', 'loading docks', 'drive-in doors', 'drive-in',
+                'clear height', 'ceiling height', 'sprinkler', 'fire sprinkler',
+                'hvac', 'climate controlled', 'led lighting', 'skylights',
+                'trailer parking', 'truck court', 'rail access', 'rail served',
+                'fenced yard', 'secured', 'gated', 'concrete floors',
+                'heavy power', 'three phase', 'office space', 'mezzanine',
+                'esfr', 'cross-dock', 'cold storage', 'freezer'
+            ]
+        elif details.property_type == PropertyType.OFFICE:
+            amenity_keywords = [
+                'parking', 'garage', 'conference', 'elevator', 'lobby',
+                'fitness', 'gym', 'rooftop', 'terrace', 'cafe',
+                'security', '24/7 access', 'fiber', 'backup power'
+            ]
+        elif details.property_type == PropertyType.RETAIL:
+            amenity_keywords = [
+                'parking', 'signage', 'pylon', 'drive-thru', 'drive-through',
+                'pad site', 'anchor', 'outparcel', 'visibility'
+            ]
+        else:
+            # Multifamily / residential amenities
+            amenity_keywords = [
+                'pool', 'gym', 'fitness', 'clubhouse', 'parking', 'garage',
+                'laundry', 'playground', 'dog park', 'business center',
+                'concierge', 'rooftop', 'balcony', 'patio', 'storage',
+                'tennis', 'basketball', 'volleyball', 'grill', 'bbq',
+                'theater', 'yoga', 'spa', 'sauna', 'package locker'
+            ]
         details.amenities = [a for a in amenity_keywords if a in text_lower]
 
         return details
