@@ -556,7 +556,47 @@ class OMParser:
         # Normalize multiple line breaks
         text = re.sub(r'\n{3,}', '\n\n', text)
 
+        # Remove common legal boilerplate language from OMs
+        text = self._remove_boilerplate(text)
+
         return text.strip()
+
+    def _remove_boilerplate(self, text: str) -> str:
+        """Remove common legal disclaimer boilerplate from OM text"""
+        # Patterns for legal disclaimer sections to remove
+        boilerplate_patterns = [
+            # Investment disclaimer language
+            r'(?i)(?:should|shall|could)\s+not\s+be\s+assumed\s+that\s+any\s+investment.*?(?:profitable|profitability)\.?',
+            r'(?i)information\s+and\s+trends\s+this\s+document\s+contains.*?(?:accuracy\s+of\s+such\s+information|independently\s+verified)\.?',
+            r'(?i)there\s+are\s+no\s+guarantees\s+that\s+any\s+of\s+the\s+trends.*?(?:future\s+events|future\s+results)\.?',
+            r'(?i)past\s+events\s+and\s+trends\s+do\s+not\s+imply.*?(?:future\s+events|future\s+results)\.?',
+            r'(?i)opinions?\s+expressed\s+in\s+this\s+document.*?(?:date\s+appearing|current\s+opinions?).*?(?:materials\s+only|subject\s+to\s+change)\.?',
+            r'(?i)(?:series\s+)?investors?,?\s+financial\s+professionals?,?\s+and\s+prospective\s+investors?\s+should\s+not\s+rely\s+solely.*?(?:investment\s+decision|offering\s+memorandum)\.?',
+            r'(?i)they\s+should\s+review\s+the\s+most\s+recent\s+offering\s*memorandum.*?(?:upon\s+request|subject\s+investment)\.?',
+            r'(?i)copies\s+may\s+be\s+obtained\s+upon\s+request.*?\.?',
+            r'(?i)certain\s+information\s+contained\s+in\s+(?:the|this)\s+materials?\s+discusses\s+general\s+market.*?',
+            # Forward-looking statements
+            r'(?i)forward[- ]looking\s+statements?.*?(?:actual\s+results|no\s+assurance).*?\.?',
+            r'(?i)(?:this|the)\s+(?:document|memorandum|materials?)\s+(?:contains?|includes?)\s+(?:certain\s+)?(?:forward[- ]looking|projections?).*?\.?',
+            # Not an offer language
+            r'(?i)(?:this|the)\s+(?:document|memorandum|materials?)\s+(?:is|does)\s+not\s+(?:constitute|represent)\s+(?:an?\s+)?(?:offer|solicitation).*?\.?',
+            r'(?i)no\s+(?:offer|representation|warranty).*?(?:is\s+made|being\s+made).*?\.?',
+            # Confidentiality notices
+            r'(?i)(?:this|the)\s+(?:document|memorandum|materials?)\s+(?:is|are)\s+(?:strictly\s+)?confidential.*?\.?',
+            r'(?i)(?:for|intended\s+for)\s+(?:the\s+)?(?:sole|exclusive)\s+use\s+of.*?\.?',
+            # General liability disclaimers
+            r'(?i)(?:the\s+)?(?:sponsor|company|issuer|series)\s+(?:and\s+its\s+)?affiliates?\s+(?:do\s+not|does\s+not)\s+accept\s+any\s+responsibility.*?\.?',
+            r'(?i)(?:no\s+)?(?:guarantee|warranty|representation)\s+(?:is\s+made|expressed|implied).*?(?:accuracy|completeness).*?\.?',
+        ]
+
+        for pattern in boilerplate_patterns:
+            text = re.sub(pattern, '', text, flags=re.DOTALL)
+
+        # Clean up any resulting multiple spaces or blank lines
+        text = re.sub(r'[^\S\n]+', ' ', text)
+        text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
+
+        return text
 
     def _safe_float(self, value_str: str) -> Optional[float]:
         """Safely convert string to float, returning None on failure"""
