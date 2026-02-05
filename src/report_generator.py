@@ -205,36 +205,258 @@ class PDFReportGenerator:
 
         story = []
 
-        # Header
-        story.extend(self._build_header(analysis))
+        # Compact header with score
+        story.extend(self._build_compact_header(analysis))
 
-        # Executive Summary
-        story.extend(self._build_executive_summary(analysis))
+        # Combined key metrics section
+        story.extend(self._build_key_metrics(analysis))
 
-        # Property Details
-        story.extend(self._build_property_section(analysis))
-
-        # Financial Metrics
-        story.extend(self._build_financials_section(analysis))
-
-        # Deal Terms
-        story.extend(self._build_deal_terms_section(analysis))
-
-        # Sponsor Fees
-        story.extend(self._build_fees_section(analysis))
-
-        # Market Data
-        if self._has_market_data(analysis):
-            story.extend(self._build_market_section(analysis))
-
-        # Page break before detailed analysis
-        story.append(PageBreak())
-
-        # Detailed Analysis
+        # Detailed Analysis (the main content)
         story.extend(self._build_analysis_section(analysis))
 
         doc.build(story)
         return output_path
+
+    def _build_compact_header(self, analysis: OMAnalysis) -> list:
+        """Build a compact header with property name, location, and score"""
+        elements = []
+
+        # Property name
+        property_name = analysis.property.name or "Real Estate Investment Analysis"
+        elements.append(Paragraph(property_name, self.styles['ReportTitle']))
+
+        # Location + date on one line
+        location_parts = []
+        if analysis.property.city:
+            location_parts.append(analysis.property.city)
+        if analysis.property.state:
+            location_parts.append(analysis.property.state)
+        location_str = ", ".join(location_parts) if location_parts else ""
+        date_str = datetime.now().strftime('%B %d, %Y')
+        subtitle = f"{location_str}  |  {date_str}" if location_str else date_str
+
+        elements.append(Paragraph(
+            subtitle,
+            ParagraphStyle(
+                'SubtitleLine',
+                parent=self.styles['Normal'],
+                fontSize=10,
+                textColor=self.COLORS['muted'],
+                alignment=TA_CENTER,
+                spaceAfter=12,
+            )
+        ))
+
+        # Score badge - prominent display
+        score = analysis.overall_score or 0
+        if score >= 60:
+            score_color = self.COLORS['success']
+            score_label = "FAVORABLE"
+        elif score >= 45:
+            score_color = self.COLORS['warning']
+            score_label = "MIXED"
+        else:
+            score_color = self.COLORS['danger']
+            score_label = "CONCERNS"
+
+        score_data = [[
+            Paragraph(f'<font size="22"><b>{score}</b></font><font size="10">/100</font>',
+                     ParagraphStyle('ScoreBig', parent=self.styles['Normal'],
+                                   textColor=score_color, alignment=TA_CENTER)),
+            Paragraph(f'<b>{score_label}</b>',
+                     ParagraphStyle('ScoreLabel', parent=self.styles['Normal'],
+                                   textColor=score_color, fontSize=11, alignment=TA_CENTER))
+        ]]
+
+        score_table = Table(score_data, colWidths=[1.2 * inch, 1.5 * inch])
+        score_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('BOX', (0, 0), (-1, -1), 2, score_color),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+
+        # Center the score table
+        outer_table = Table([[score_table]], colWidths=[7 * inch])
+        outer_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ]))
+        elements.append(outer_table)
+        elements.append(Spacer(1, 15))
+
+        return elements
+
+    def _build_key_metrics(self, analysis: OMAnalysis) -> list:
+        """Build a compact key metrics section combining property, financials, deal terms"""
+        elements = []
+
+        prop = analysis.property
+        fin = analysis.financials
+        terms = analysis.deal_terms
+        fees = analysis.fees
+
+        # ===== ROW 1: Property + Valuation side by side =====
+        # Property details (left column)
+        prop_rows = []
+        if prop.property_type and prop.property_type != PropertyType.UNKNOWN:
+            prop_rows.append(['Type', prop.property_type.value.replace('_', ' ').title()])
+        if prop.year_built:
+            age = datetime.now().year - prop.year_built
+            prop_rows.append(['Built', f"{prop.year_built} ({age} yrs)"])
+        if prop.num_buildings:
+            prop_rows.append(['Buildings', str(prop.num_buildings)])
+        if prop.total_units and prop.total_units != prop.num_buildings:
+            prop_rows.append(['Units', str(prop.total_units)])
+        if prop.num_tenants:
+            prop_rows.append(['Tenants', str(prop.num_tenants)])
+        if prop.total_sqft:
+            prop_rows.append(['Size', f"{prop.total_sqft:,.0f} SF"])
+        if prop.walt_years:
+            prop_rows.append(['WALT', f"{prop.walt_years:.1f} yrs"])
+        if prop.lot_size_acres:
+            prop_rows.append(['Land', f"{prop.lot_size_acres:.2f} ac"])
+
+        # Valuation details (right column)
+        val_rows = []
+        if fin.asking_price:
+            val_rows.append(['Price', f"${fin.asking_price:,.0f}"])
+        if fin.price_per_sqft:
+            val_rows.append(['$/SF', f"${fin.price_per_sqft:,.2f}"])
+        if fin.price_per_unit:
+            val_rows.append(['$/Unit', f"${fin.price_per_unit:,.0f}"])
+        if fin.current_cap_rate:
+            val_rows.append(['Cap Rate', f"{fin.current_cap_rate:.2%}"])
+        if fin.current_noi:
+            val_rows.append(['NOI', f"${fin.current_noi:,.0f}"])
+        if fin.current_occupancy:
+            val_rows.append(['Occupancy', f"{fin.current_occupancy:.1%}"])
+
+        # Build the two mini tables
+        if prop_rows or val_rows:
+            elements.append(self._build_two_column_section(
+                "PROPERTY", prop_rows,
+                "VALUATION", val_rows
+            ))
+            elements.append(Spacer(1, 10))
+
+        # ===== ROW 2: Returns + Deal Terms side by side =====
+        # Returns details (left column)
+        ret_rows = []
+        if fin.irr_projected:
+            ret_rows.append(['Target IRR', f"{fin.irr_projected:.1%}"])
+        if fin.equity_multiple:
+            ret_rows.append(['Equity Multiple', f"{fin.equity_multiple:.2f}x"])
+        if fin.cash_on_cash_return:
+            ret_rows.append(['Cash-on-Cash', f"{fin.cash_on_cash_return:.1%}"])
+        if terms.preferred_return:
+            ret_rows.append(['Pref Return', f"{terms.preferred_return:.1%}"])
+
+        # Deal terms (right column)
+        deal_rows = []
+        if terms.loan_to_value:
+            deal_rows.append(['LTV', f"{terms.loan_to_value:.1%}"])
+        if terms.interest_rate:
+            deal_rows.append(['Rate', f"{terms.interest_rate:.2%}"])
+        if terms.hold_period_years:
+            deal_rows.append(['Hold', f"{terms.hold_period_years} yrs"])
+        if terms.minimum_investment:
+            deal_rows.append(['Min Invest', f"${terms.minimum_investment:,.0f}"])
+        if terms.profit_split:
+            deal_rows.append(['Split (LP/GP)', terms.profit_split])
+
+        if ret_rows or deal_rows:
+            elements.append(self._build_two_column_section(
+                "RETURNS", ret_rows,
+                "DEAL TERMS", deal_rows
+            ))
+            elements.append(Spacer(1, 10))
+
+        # ===== ROW 3: Fees (single row, compact) =====
+        fee_items = []
+        if fees.acquisition_fee:
+            fee_items.append(f"Acq: {fees.acquisition_fee:.1%}")
+        if fees.asset_management_fee:
+            fee_items.append(f"AM: {fees.asset_management_fee:.1%}/yr")
+        if fees.property_management_fee:
+            fee_items.append(f"PM: {fees.property_management_fee:.1%}")
+        if fees.disposition_fee:
+            fee_items.append(f"Disp: {fees.disposition_fee:.1%}")
+
+        if fee_items:
+            fee_text = "  |  ".join(fee_items)
+            elements.append(Paragraph("SPONSOR FEES", self.styles['SubsectionHeader']))
+            elements.append(Paragraph(
+                fee_text,
+                ParagraphStyle('FeeRow', parent=self.styles['Normal'],
+                              fontSize=9, textColor=self.COLORS['text'])
+            ))
+            elements.append(Spacer(1, 10))
+
+        # Divider before detailed analysis
+        elements.append(HRFlowable(
+            width="100%",
+            thickness=1.5,
+            color=self.COLORS['primary'],
+            spaceAfter=10,
+        ))
+
+        return elements
+
+    def _build_two_column_section(self, left_title: str, left_data: list,
+                                   right_title: str, right_data: list) -> Table:
+        """Build a two-column section with headers and data"""
+        # Create mini tables for each column
+        def make_mini_table(title: str, data: list) -> list:
+            rows = [[Paragraph(f'<b>{title}</b>',
+                              ParagraphStyle('MiniHeader', parent=self.styles['Normal'],
+                                            fontSize=10, textColor=self.COLORS['primary']))]]
+            for label, value in data:
+                rows.append([
+                    Paragraph(f'{label}:', ParagraphStyle('MiniLabel', parent=self.styles['Normal'],
+                                                         fontSize=8, textColor=self.COLORS['muted'])),
+                    Paragraph(f'<b>{value}</b>', ParagraphStyle('MiniValue', parent=self.styles['Normal'],
+                                                               fontSize=9, textColor=self.COLORS['text']))
+                ])
+            return rows
+
+        left_rows = make_mini_table(left_title, left_data) if left_data else [['']]
+        right_rows = make_mini_table(right_title, right_data) if right_data else [['']]
+
+        # Build individual tables
+        left_table = Table(left_rows, colWidths=[1.2 * inch, 1.8 * inch]) if left_data else None
+        right_table = Table(right_rows, colWidths=[1.2 * inch, 1.8 * inch]) if right_data else None
+
+        if left_table:
+            left_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('TOPPADDING', (0, 0), (-1, -1), 2),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                ('SPAN', (0, 0), (-1, 0)),  # Header spans columns
+            ]))
+        if right_table:
+            right_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('TOPPADDING', (0, 0), (-1, -1), 2),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                ('SPAN', (0, 0), (-1, 0)),  # Header spans columns
+            ]))
+
+        # Combine into outer table
+        outer_data = [[left_table or '', right_table or '']]
+        outer_table = Table(outer_data, colWidths=[3.4 * inch, 3.4 * inch])
+        outer_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('BOX', (0, 0), (-1, -1), 0.5, self.COLORS['border']),
+            ('LINEBEFORE', (1, 0), (1, 0), 0.5, self.COLORS['border']),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('BACKGROUND', (0, 0), (-1, -1), self.COLORS['light_bg']),
+        ]))
+
+        return outer_table
 
     def _build_header(self, analysis: OMAnalysis) -> list:
         """Build the report header"""
