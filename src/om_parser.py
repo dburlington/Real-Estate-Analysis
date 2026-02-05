@@ -966,6 +966,9 @@ class OMParser:
         coc_patterns = [
             r'(?:proforma\s*)?(?:average\s*)?(?:annual\s*)?cash[\s-]*on[\s-]*cash[:\s]*([\d.]+)\s*%?',
             r'cash[\s-]*on[\s-]*cash(?:\s*return)?[:\s]*([\d.]+)\s*%?',
+            r'cash[\s-]*on[\s-]*cash[^\d]*([\d.]+)\s*%',  # More flexible
+            r'([\d.]+)\s*%\s*cash[\s-]*on[\s-]*cash',  # Value before label
+            r'coc[:\s]*([\d.]+)\s*%?',  # Abbreviated
         ]
         for pattern in coc_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
@@ -977,11 +980,16 @@ class OMParser:
                         financials.cash_on_cash_return = coc_val
                         break
 
-        # IRR - look for "Proforma Net IRR 15.2%"
+        # IRR - look for "Proforma Net IRR 15.2%" or "Total IRR 15.2%"
         irr_patterns = [
-            r'(?:proforma\s*)?(?:net\s*)?irr[:\s]*([\d.]+)\s*%?',
+            r'(?:total\s*)?(?:proforma\s*)?(?:net\s*)?irr[:\s]*([\d.]+)\s*%?',
             r'(?:net\s*)?irr(?:\s*\(\d+\))?[:\s]*([\d.]+)\s*%?',
             r'internal\s*rate\s*of\s*return[:\s]*([\d.]+)\s*%?',
+            r'irr[^\d]*([\d.]+)\s*%',  # More flexible
+            r'([\d.]+)\s*%\s*irr',  # Value before label
+            r'levered\s*irr[:\s]*([\d.]+)\s*%?',
+            r'target\s*irr[:\s]*([\d.]+)\s*%?',
+            r'projected\s*irr[:\s]*([\d.]+)\s*%?',
         ]
         for pattern in irr_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
