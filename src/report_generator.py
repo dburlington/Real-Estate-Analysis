@@ -408,59 +408,58 @@ class PDFReportGenerator:
 
     def _build_two_column_section(self, left_title: str, left_data: list,
                                    right_title: str, right_data: list) -> Table:
-        """Build a two-column section with headers and data"""
-        # Create mini tables for each column
-        def make_mini_table(title: str, data: list) -> list:
-            # Header row must have 2 elements to match data rows (for proper SPAN)
-            rows = [[Paragraph(f'<b>{title}</b>',
-                              ParagraphStyle('MiniHeader', parent=self.styles['Normal'],
-                                            fontSize=10, textColor=self.COLORS['primary'])), '']]
-            for label, value in data:
-                rows.append([
-                    Paragraph(f'{label}:', ParagraphStyle('MiniLabel', parent=self.styles['Normal'],
-                                                         fontSize=8, textColor=self.COLORS['muted'])),
-                    Paragraph(f'<b>{value}</b>', ParagraphStyle('MiniValue', parent=self.styles['Normal'],
-                                                               fontSize=9, textColor=self.COLORS['text']))
-                ])
-            return rows
+        """Build a two-column section with headers and data using a flat 4-column table"""
+        # Create styles
+        header_style = ParagraphStyle('ColHeader', parent=self.styles['Normal'],
+                                      fontSize=10, textColor=self.COLORS['primary'],
+                                      fontName='Helvetica-Bold')
+        label_style = ParagraphStyle('ColLabel', parent=self.styles['Normal'],
+                                     fontSize=8, textColor=self.COLORS['muted'])
+        value_style = ParagraphStyle('ColValue', parent=self.styles['Normal'],
+                                     fontSize=9, textColor=self.COLORS['text'],
+                                     fontName='Helvetica-Bold')
 
-        left_rows = make_mini_table(left_title, left_data) if left_data else [['', '']]
-        right_rows = make_mini_table(right_title, right_data) if right_data else [['', '']]
+        # Build rows: [left_label, left_value, right_label, right_value]
+        rows = []
 
-        # Build individual tables
-        left_table = Table(left_rows, colWidths=[1.2 * inch, 1.8 * inch]) if left_data else None
-        right_table = Table(right_rows, colWidths=[1.2 * inch, 1.8 * inch]) if right_data else None
+        # Header row
+        rows.append([
+            Paragraph(f'<b>{left_title}</b>', header_style), '',
+            Paragraph(f'<b>{right_title}</b>', header_style), ''
+        ])
 
-        if left_table:
-            left_table.setStyle(TableStyle([
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('TOPPADDING', (0, 0), (-1, -1), 2),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-                ('SPAN', (0, 0), (1, 0)),  # Header spans both columns
-            ]))
-        if right_table:
-            right_table.setStyle(TableStyle([
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('TOPPADDING', (0, 0), (-1, -1), 2),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-                ('SPAN', (0, 0), (1, 0)),  # Header spans both columns
-            ]))
+        # Determine max rows needed
+        max_rows = max(len(left_data), len(right_data))
 
-        # Combine into outer table
-        outer_data = [[left_table or '', right_table or '']]
-        outer_table = Table(outer_data, colWidths=[3.4 * inch, 3.4 * inch])
-        outer_table.setStyle(TableStyle([
+        # Data rows
+        for i in range(max_rows):
+            row = ['', '', '', '']
+            if i < len(left_data):
+                row[0] = Paragraph(f'{left_data[i][0]}:', label_style)
+                row[1] = Paragraph(left_data[i][1], value_style)
+            if i < len(right_data):
+                row[2] = Paragraph(f'{right_data[i][0]}:', label_style)
+                row[3] = Paragraph(right_data[i][1], value_style)
+            rows.append(row)
+
+        # Create table with 4 columns
+        table = Table(rows, colWidths=[1.0 * inch, 1.4 * inch, 1.0 * inch, 1.4 * inch])
+        table.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('BOX', (0, 0), (-1, -1), 0.5, self.COLORS['border']),
-            ('LINEBEFORE', (1, 0), (1, 0), 0.5, self.COLORS['border']),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
             ('LEFTPADDING', (0, 0), (-1, -1), 8),
             ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            # Header row spans
+            ('SPAN', (0, 0), (1, 0)),  # Left header spans 2 columns
+            ('SPAN', (2, 0), (3, 0)),  # Right header spans 2 columns
+            # Visual styling
+            ('BOX', (0, 0), (-1, -1), 0.5, self.COLORS['border']),
+            ('LINEBEFORE', (2, 0), (2, -1), 0.5, self.COLORS['border']),  # Vertical divider
             ('BACKGROUND', (0, 0), (-1, -1), self.COLORS['light_bg']),
         ]))
 
-        return outer_table
+        return table
 
     def _build_header(self, analysis: OMAnalysis) -> list:
         """Build the report header"""
