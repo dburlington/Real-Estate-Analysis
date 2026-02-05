@@ -788,7 +788,6 @@ class PDFReportGenerator:
     def _build_analysis_section(self, analysis: OMAnalysis) -> list:
         """Build the detailed analysis section"""
         elements = []
-        elements.append(Paragraph("DETAILED ANALYSIS", self.styles['SectionHeader']))
 
         # Strengths
         if analysis.pros:
@@ -843,15 +842,7 @@ class PDFReportGenerator:
             elements.append(Spacer(1, 10))
 
         # Final recommendation
-        elements.append(HRFlowable(
-            width="100%",
-            thickness=1,
-            color=self.COLORS['primary'],
-            spaceBefore=12,
-            spaceAfter=12,
-        ))
-
-        elements.append(Paragraph("RECOMMENDATION", self.styles['SectionHeader']))
+        elements.append(Spacer(1, 10))
 
         recommendation = analysis.recommendation or "Analysis pending"
         score = analysis.overall_score or 0
@@ -873,20 +864,6 @@ class PDFReportGenerator:
                 alignment=TA_CENTER,
                 spaceBefore=8,
                 spaceAfter=15,
-            )
-        ))
-
-        # Disclaimer
-        elements.append(Paragraph(
-            "This analysis is for informational purposes only and does not constitute investment advice. "
-            "Conduct your own due diligence and consult qualified professionals before investing.",
-            ParagraphStyle(
-                'Disclaimer',
-                parent=self.styles['Normal'],
-                fontSize=7,
-                textColor=self.COLORS['muted'],
-                alignment=TA_CENTER,
-                spaceBefore=20,
             )
         ))
 
