@@ -987,8 +987,8 @@ class OMParser:
             # Total/Net/Target IRR - these are the actual projected returns (highest priority)
             r'(?:total|net|target)\s+irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
             r'proforma\s+(?:net\s+)?irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
-            # Levered/Projected/Expected/Blended/LP/Investor IRR
-            r'(?:levered|projected|expected|estimated|blended|lp|investor|unlevered)\s+irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # Levered/Projected/Expected/Blended/LP/Investor/Unleveraged IRR
+            r'(?:levered|projected|expected|estimated|blended|lp|investor|unlevered|unleveraged|deal|project|sponsor)\s+irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
             # Value before "Total/Net/Target IRR"
             r'(\d+\.?\d*)\s*%\s*(?:total|net|target|projected|expected)\s+irr',
             # Internal rate of return (full phrase)
@@ -997,15 +997,18 @@ class OMParser:
             r'\birr\s*\([^)]+\)\s*[:=]?\s*(\d+\.?\d*)\s*%',
             # "IRR of 15.2%" format
             r'\birr\s+of\s+(\d+\.?\d*)\s*%',
-            # IRR with colon/equals - only match values in projected IRR range (>10%)
-            # This avoids hurdle rates which are typically 4-8%
-            r'\birr\s*[:=]\s*(\d{2}\.?\d*)\s*%',
+            # Yield patterns common in industrial/commercial OMs
+            r'(?:unleveraged|unlevered|leveraged|levered|project|deal)\s+yield\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # Annual/annualized return patterns
+            r'(?:annual|annualized|projected|target)\s+return\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # IRR with colon/equals - match values 8% and above (lowered from 10%)
+            r'\birr\s*[:=]\s*(\d+\.?\d*)\s*%',
             # IRR with dash separator - "IRR - 15.2%"
-            r'\birr\s*[-–—]\s*(\d{2}\.?\d*)\s*%',
+            r'\birr\s*[-–—]\s*(\d+\.?\d*)\s*%',
             # IRR followed by space and value (no colon) - e.g., "IRR 15.2%"
-            r'\birr\s+(\d{2}\.?\d*)\s*%',
+            r'\birr\s+(\d+\.?\d*)\s*%',
             # Value before plain "IRR"
-            r'(\d{2}\.?\d*)\s*%\s*\birr\b',
+            r'(\d+\.?\d*)\s*%\s*\birr\b',
         ]
         for pattern in irr_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
@@ -1013,8 +1016,8 @@ class OMParser:
                 irr = self._safe_float(match.group(1))
                 if irr:
                     irr_val = irr if irr <= 1 else irr / 100
-                    # IRR typically 10-25% for real estate
-                    if 0.08 <= irr_val <= 0.35:
+                    # IRR typically 6-35% for real estate (lowered min from 8% to 6%)
+                    if 0.06 <= irr_val <= 0.35:
                         financials.irr_projected = irr_val
                         break
 
@@ -1023,6 +1026,10 @@ class OMParser:
             r'(?:proforma\s*)?(?:net\s*)?equity\s*multiple[:\s]*([\d.]+)\s*x?',
             r'(?:net\s*)?equity\s*multiple(?:\s*\(\d+\))?[:\s]*([\d.]+)\s*x?',
             r'moic[:\s]*([\d.]+)\s*x?',
+            # Additional patterns for commercial/industrial OMs
+            r'(?:investment|return|total)\s*multiple[:\s]*([\d.]+)\s*x?',
+            r'multiple\s*(?:of\s*)?(?:invested\s*)?(?:capital|equity)[:\s]*([\d.]+)\s*x?',
+            r'\bmultiple\s*[:=]\s*([\d.]+)\s*x',
         ]
         for pattern in em_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
