@@ -35,6 +35,7 @@ except ImportError as e:
 from src.om_parser import OMParser
 from src.deal_analyzer import DealAnalyzer
 from src.market_data import MarketDataFetcher
+from src.external_data import ExternalDataFetcher
 from src.models import RiskLevel, Finding, OMAnalysis
 
 
@@ -253,6 +254,75 @@ def display_market_data(console, analysis: OMAnalysis):
         print()
 
 
+def display_external_context(console, analysis: OMAnalysis):
+    """Display external market context (news, indicators, analyst insights)"""
+    ctx = analysis.external_context
+
+    # Check if there's meaningful data
+    if not ctx or not (ctx.economic_indicators or ctx.analyst_insights or ctx.market_news):
+        return
+
+    if console:
+        # Economic Indicators
+        if ctx.economic_indicators:
+            table = Table(title="Economic Indicators", box=box.ROUNDED)
+            table.add_column("Indicator", style="cyan")
+            table.add_column("Value", style="white")
+            table.add_column("Trend", style="dim")
+
+            for ind in ctx.economic_indicators[:6]:
+                trend_icon = {'up': '[red]\u2191[/red]', 'down': '[green]\u2193[/green]',
+                             'stable': '[dim]\u2192[/dim]'}.get(ind.trend, '')
+                table.add_row(ind.name, f"{ind.value}{ind.unit}", trend_icon)
+
+            console.print(table)
+            console.print()
+
+        # Analyst Insights (show top 2)
+        if ctx.analyst_insights:
+            console.print(Panel.fit(
+                "[bold]Analyst Insights[/bold]",
+                border_style="blue"
+            ))
+            for insight in ctx.analyst_insights[:2]:
+                console.print(f"[bold cyan]{insight.source}[/bold cyan] - {insight.title}")
+                console.print(f"  [dim]{insight.key_finding}[/dim]")
+                if insight.forecast:
+                    console.print(f"  [italic]Forecast: {insight.forecast}[/italic]")
+                console.print()
+
+        # Market News headlines (show top 3)
+        if ctx.market_news:
+            console.print("[bold]Market News[/bold]")
+            for news in ctx.market_news[:3]:
+                sentiment_color = {'positive': 'green', 'negative': 'red', 'neutral': 'white'}.get(news.sentiment, 'white')
+                console.print(f"  [{sentiment_color}]\u2022 {news.headline}[/{sentiment_color}]")
+                console.print(f"    [dim]{news.source}[/dim]")
+            console.print()
+
+        # Regulatory risks if any
+        if ctx.regulatory_risks:
+            console.print("[bold yellow]Regulatory Considerations[/bold yellow]")
+            for risk in ctx.regulatory_risks[:3]:
+                console.print(f"  [yellow]\u2022 {risk}[/yellow]")
+            console.print()
+
+    else:
+        # Plain text output
+        if ctx.economic_indicators:
+            print("--- Economic Indicators ---")
+            for ind in ctx.economic_indicators[:4]:
+                trend = {'up': '^', 'down': 'v', 'stable': '-'}.get(ind.trend, '')
+                print(f"  {ind.name}: {ind.value}{ind.unit} {trend}")
+            print()
+
+        if ctx.analyst_insights:
+            print("--- Analyst Insights ---")
+            for insight in ctx.analyst_insights[:2]:
+                print(f"  {insight.source}: {insight.key_finding}")
+            print()
+
+
 def display_fee_summary(console, analysis: OMAnalysis):
     """Display sponsor fee structure"""
     fees = analysis.fees
@@ -417,6 +487,7 @@ def analyze_om(om_input: str, console) -> OMAnalysis:
     """Parse and analyze the OM"""
     parser = OMParser()
     analyzer = DealAnalyzer()
+    external_fetcher = ExternalDataFetcher()
 
     if console:
         console.print("[dim]Parsing OM...[/dim]")
@@ -435,6 +506,23 @@ def analyze_om(om_input: str, console) -> OMAnalysis:
 
     # Run analysis
     analysis = analyzer.analyze(analysis)
+
+    # Fetch external context (news, government data, analyst insights)
+    if console:
+        console.print("[dim]Gathering external market context...[/dim]")
+
+    try:
+        external_context = external_fetcher.fetch_external_context(
+            city=analysis.property.city or "",
+            state=analysis.property.state or "",
+            property_type=analysis.property.property_type,
+            property_name=analysis.property.name
+        )
+        analysis.external_context = external_context
+    except Exception as e:
+        # External data is supplementary - don't fail if unavailable
+        if console:
+            console.print(f"[dim yellow]Note: Some external data unavailable: {e}[/dim yellow]")
 
     return analysis
 
@@ -547,6 +635,7 @@ def main():
             display_financial_summary(console, analysis)
             display_fee_summary(console, analysis)
             display_market_data(console, analysis)
+            display_external_context(console, analysis)
 
             # Display findings
             display_findings(console, analysis.red_flags, "🚨 Red Flags", "red")

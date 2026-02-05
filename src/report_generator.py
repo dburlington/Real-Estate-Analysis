@@ -47,7 +47,7 @@ from reportlab.platypus import (
 )
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
 
-from .models import OMAnalysis, Finding, RiskLevel, PropertyType
+from .models import OMAnalysis, Finding, RiskLevel, PropertyType, ExternalContext
 
 
 class PDFReportGenerator:
@@ -213,6 +213,9 @@ class PDFReportGenerator:
 
         # Detailed Analysis (the main content)
         story.extend(self._build_analysis_section(analysis))
+
+        # External Context (news, government data, analyst insights)
+        story.extend(self._build_external_context_section(analysis))
 
         doc.build(story)
         return output_path
@@ -886,6 +889,157 @@ class PDFReportGenerator:
                 spaceBefore=20,
             )
         ))
+
+        return elements
+
+    def _build_external_context_section(self, analysis: OMAnalysis) -> list:
+        """Build the external context section with news, government data, and analyst insights"""
+        elements = []
+        ctx = analysis.external_context
+
+        # Only add section if there's meaningful data
+        has_data = (ctx.economic_indicators or ctx.market_news or
+                    ctx.analyst_insights or ctx.supply_pipeline)
+        if not has_data:
+            return elements
+
+        elements.append(PageBreak())
+        elements.append(Paragraph("MARKET CONTEXT & EXTERNAL DATA", self.styles['SectionHeader']))
+        elements.append(Spacer(1, 6))
+
+        # Economic Indicators
+        if ctx.economic_indicators:
+            elements.append(Paragraph("Economic Indicators", self.styles['SubsectionHeader']))
+            indicator_data = []
+            for ind in ctx.economic_indicators[:6]:  # Limit to 6
+                trend_symbol = {'up': '\u2191', 'down': '\u2193', 'stable': '\u2192'}.get(ind.trend, '')
+                indicator_data.append([
+                    f"{ind.name}",
+                    f"{ind.value}{ind.unit} {trend_symbol}",
+                ])
+            if indicator_data:
+                table = self._create_data_table(indicator_data)
+                elements.append(table)
+                # Add source note
+                sources = set(ind.source for ind in ctx.economic_indicators)
+                elements.append(Paragraph(
+                    f"<i>Sources: {', '.join(list(sources)[:3])}</i>",
+                    ParagraphStyle('SourceNote', parent=self.styles['Normal'],
+                                  fontSize=7, textColor=self.COLORS['muted'])
+                ))
+            elements.append(Spacer(1, 12))
+
+        # Analyst Insights
+        if ctx.analyst_insights:
+            elements.append(Paragraph("Analyst Insights", self.styles['SubsectionHeader']))
+            for insight in ctx.analyst_insights[:4]:  # Limit to 4
+                elements.append(Paragraph(
+                    f"<b>{insight.source}</b> - {insight.title}",
+                    ParagraphStyle('InsightHeader', parent=self.styles['Normal'],
+                                  fontSize=9, textColor=self.COLORS['secondary'])
+                ))
+                elements.append(Paragraph(
+                    insight.key_finding,
+                    self.styles['CustomBodyText']
+                ))
+                if insight.forecast:
+                    elements.append(Paragraph(
+                        f"<i>Forecast: {insight.forecast}</i>",
+                        ParagraphStyle('Forecast', parent=self.styles['Normal'],
+                                      fontSize=8, textColor=self.COLORS['muted'],
+                                      leftIndent=10)
+                    ))
+                elements.append(Spacer(1, 6))
+            elements.append(Spacer(1, 6))
+
+        # Market News
+        if ctx.market_news:
+            elements.append(Paragraph("Market News & Trends", self.styles['SubsectionHeader']))
+            for news in ctx.market_news[:4]:  # Limit to 4
+                # Sentiment indicator
+                sentiment_color = {
+                    'positive': self.COLORS['success'],
+                    'negative': self.COLORS['danger'],
+                    'neutral': self.COLORS['muted']
+                }.get(news.sentiment, self.COLORS['text'])
+
+                elements.append(Paragraph(
+                    f"<b>{news.headline}</b>",
+                    ParagraphStyle('NewsHeadline', parent=self.styles['Normal'],
+                                  fontSize=9, textColor=sentiment_color)
+                ))
+                elements.append(Paragraph(
+                    f"{news.summary}",
+                    ParagraphStyle('NewsSummary', parent=self.styles['Normal'],
+                                  fontSize=8, textColor=self.COLORS['text'],
+                                  leftIndent=10)
+                ))
+                elements.append(Paragraph(
+                    f"<i>— {news.source}, {news.date}</i>",
+                    ParagraphStyle('NewsSource', parent=self.styles['Normal'],
+                                  fontSize=7, textColor=self.COLORS['muted'],
+                                  leftIndent=10)
+                ))
+                elements.append(Spacer(1, 6))
+            elements.append(Spacer(1, 6))
+
+        # Supply Pipeline
+        if ctx.supply_pipeline:
+            elements.append(Paragraph("Supply Pipeline", self.styles['SubsectionHeader']))
+            pipeline_data = []
+            for key, value in ctx.supply_pipeline.items():
+                if key != 'source' and value:
+                    label = key.replace('_', ' ').title()
+                    pipeline_data.append([label, str(value)])
+            if pipeline_data:
+                table = self._create_data_table(pipeline_data)
+                elements.append(table)
+            elements.append(Spacer(1, 12))
+
+        # Regulatory Risks
+        if ctx.regulatory_risks:
+            elements.append(Paragraph("Regulatory Considerations", self.styles['SubsectionHeader']))
+            for risk in ctx.regulatory_risks[:4]:
+                elements.append(Paragraph(
+                    f"\u2022 {risk}",
+                    ParagraphStyle('RiskItem', parent=self.styles['Normal'],
+                                  fontSize=8, textColor=self.COLORS['warning'],
+                                  leftIndent=10)
+                ))
+            elements.append(Spacer(1, 8))
+
+        # Environmental Notes
+        if ctx.environmental_notes:
+            elements.append(Paragraph("Environmental Considerations", self.styles['SubsectionHeader']))
+            for note in ctx.environmental_notes[:3]:
+                elements.append(Paragraph(
+                    f"\u2022 {note}",
+                    ParagraphStyle('EnvNote', parent=self.styles['Normal'],
+                                  fontSize=8, textColor=self.COLORS['muted'],
+                                  leftIndent=10)
+                ))
+            elements.append(Spacer(1, 8))
+
+        # Data Sources footer
+        if ctx.data_sources_used:
+            elements.append(HRFlowable(
+                width="100%",
+                thickness=0.5,
+                color=self.COLORS['border'],
+                spaceBefore=10,
+                spaceAfter=6,
+            ))
+            elements.append(Paragraph(
+                f"<i>Data sources: {', '.join(ctx.data_sources_used)}</i>",
+                ParagraphStyle('DataSources', parent=self.styles['Normal'],
+                              fontSize=7, textColor=self.COLORS['muted'])
+            ))
+            if ctx.last_updated:
+                elements.append(Paragraph(
+                    f"<i>Last updated: {ctx.last_updated}</i>",
+                    ParagraphStyle('LastUpdated', parent=self.styles['Normal'],
+                                  fontSize=7, textColor=self.COLORS['muted'])
+                ))
 
         return elements
 

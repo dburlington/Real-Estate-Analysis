@@ -140,6 +140,66 @@ class MarketData:
 
 
 @dataclass
+class NewsItem:
+    """A news article or media mention"""
+    headline: str
+    source: str
+    date: str
+    summary: str
+    url: str = ""
+    sentiment: str = ""  # positive, negative, neutral
+
+
+@dataclass
+class EconomicIndicator:
+    """Government/economic data point"""
+    name: str
+    value: float
+    unit: str  # %, $, count, etc.
+    period: str  # e.g., "Q4 2025", "Dec 2025"
+    source: str
+    trend: str = ""  # up, down, stable
+    context: str = ""  # How this compares to national/historical
+
+
+@dataclass
+class AnalystInsight:
+    """Professional analyst report or forecast"""
+    source: str  # e.g., "CBRE", "JLL", "Marcus & Millichap"
+    title: str
+    date: str
+    key_finding: str
+    forecast: str = ""
+    relevance: str = ""  # Why this matters for the deal
+
+
+@dataclass
+class ExternalContext:
+    """Aggregated external data for investment context"""
+    # Recent news about the market/location
+    market_news: list[NewsItem] = field(default_factory=list)
+    property_news: list[NewsItem] = field(default_factory=list)
+
+    # Government/economic data
+    economic_indicators: list[EconomicIndicator] = field(default_factory=list)
+
+    # Analyst reports and forecasts
+    analyst_insights: list[AnalystInsight] = field(default_factory=list)
+
+    # Supply/demand dynamics
+    supply_pipeline: dict = field(default_factory=dict)
+    recent_sales_comps: list[dict] = field(default_factory=list)
+
+    # Risk factors from external sources
+    regulatory_risks: list[str] = field(default_factory=list)
+    environmental_notes: list[str] = field(default_factory=list)
+
+    # Data freshness
+    last_updated: str = ""
+    data_sources_used: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Finding:
     """A single analysis finding (pro, con, or red flag)"""
     category: str
@@ -159,6 +219,7 @@ class OMAnalysis:
     deal_terms: DealTerms
     market_data: MarketData
     fees: SponsorFees = field(default_factory=SponsorFees)
+    external_context: ExternalContext = field(default_factory=ExternalContext)
     pros: list[Finding] = field(default_factory=list)
     cons: list[Finding] = field(default_factory=list)
     red_flags: list[Finding] = field(default_factory=list)
