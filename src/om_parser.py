@@ -987,15 +987,17 @@ class OMParser:
             # Total/Net/Target IRR - these are the actual projected returns (highest priority)
             r'(?:total|net|target)\s+irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
             r'proforma\s+(?:net\s+)?irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
-            # Levered/Projected IRR
-            r'(?:levered|projected)\s+irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
-            # Value before "Total/Net/Target IRR" at end of string
-            r'(\d+\.?\d*)\s*%\s*(?:total|net|target)\s+irr\s*$',
+            # Levered/Projected/Expected IRR
+            r'(?:levered|projected|expected|estimated)\s+irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # Value before "Total/Net/Target IRR"
+            r'(\d+\.?\d*)\s*%\s*(?:total|net|target|projected|expected)\s+irr',
             # Internal rate of return (full phrase)
             r'internal\s*rate\s*of\s*return\s*[:=]?\s*(\d+\.?\d*)\s*%',
-            # Plain "IRR:" only as last resort (may be hurdle rate)
-            # Commented out to avoid matching IRR hurdles
-            # r'\birr\s*[:=]\s*(\d+\.?\d*)\s*%',
+            # IRR with colon/equals - only match values in projected IRR range (>10%)
+            # This avoids hurdle rates which are typically 4-8%
+            r'\birr\s*[:=]\s*(\d{2}\.?\d*)\s*%',
+            # Value before plain "IRR"
+            r'(\d{2}\.?\d*)\s*%\s*\birr\b',
         ]
         for pattern in irr_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
