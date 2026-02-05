@@ -962,12 +962,12 @@ class OMParser:
             if 0.1 <= exp_ratio_val <= 0.9:  # Sanity check
                 financials.expense_ratio = exp_ratio_val
 
-        # Cash on Cash - look for "Cash on Cash 7.7%" or "7.7% Cash on Cash"
+        # Cash on Cash - look for "Cash on Cash 7.7%", "Cash-on-Cash Return (Year 1): 2.1%", etc.
         coc_patterns = [
             # Value before label at start of string/line (check FIRST - most specific)
             r'(?:^|\n)\s*(\d+\.?\d*)\s*%\s*(?:average\s*)?(?:annual\s*)?cash[\s-]*on[\s-]*cash',
-            # Label with explicit separator
-            r'cash[\s-]*on[\s-]*cash(?:\s*return)?\s*[:=]\s*(\d+\.?\d*)\s*%',
+            # Label with optional "(Year X)" and explicit separator
+            r'cash[\s-]*on[\s-]*cash(?:\s*return)?(?:\s*\([^)]+\))?\s*[:=]\s*(\d+\.?\d*)\s*%',
             # Label followed directly by value
             r'cash[\s-]*on[\s-]*cash\s+(\d+\.?\d*)\s*%',
         ]
@@ -981,16 +981,16 @@ class OMParser:
                         financials.cash_on_cash_return = coc_val
                         break
 
-        # IRR - look for "Total IRR 15.2%" or "Proforma Net IRR 15.2%"
-        # IMPORTANT: Prioritize "Total/Net/Proforma IRR" over plain "IRR" to avoid matching IRR hurdles
+        # IRR - look for "Total IRR 15.2%", "Target IRR 22%", etc.
+        # IMPORTANT: Prioritize "Total/Net/Proforma/Target IRR" over plain "IRR" to avoid matching IRR hurdles
         irr_patterns = [
-            # Total/Net IRR - these are the actual projected returns (highest priority)
-            r'(?:total|net)\s+irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # Total/Net/Target IRR - these are the actual projected returns (highest priority)
+            r'(?:total|net|target)\s+irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
             r'proforma\s+(?:net\s+)?irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
             # Levered/Projected IRR
             r'(?:levered|projected)\s+irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
-            # Value before "Total/Net IRR" at end of string
-            r'(\d+\.?\d*)\s*%\s*(?:total|net)\s+irr\s*$',
+            # Value before "Total/Net/Target IRR" at end of string
+            r'(\d+\.?\d*)\s*%\s*(?:total|net|target)\s+irr\s*$',
             # Internal rate of return (full phrase)
             r'internal\s*rate\s*of\s*return\s*[:=]?\s*(\d+\.?\d*)\s*%',
             # Plain "IRR:" only as last resort (may be hurdle rate)
@@ -1093,10 +1093,24 @@ class OMParser:
                     terms.minimum_investment = min_inv
                     break
 
-        # Preferred return / IRR Hurdle - look for "IRR Hurdle 8%"
+        # Preferred return / IRR Hurdle - look for "IRR Hurdle 6%", "6% hurdle", etc.
+        # This is the minimum return LPs receive before the GP gets promote
         pref_patterns = [
+            # Explicit IRR Hurdle patterns
             r'IRR\s*(?:Hurdle|Target)[:\s]*([\d.]+)\s*%',
+            r'(?:Hurdle|Target)\s*IRR[:\s]*([\d.]+)\s*%',
+            # Value before "hurdle" or "hurdle rate"
+            r'([\d.]+)\s*%\s*(?:IRR\s*)?hurdle(?:\s*rate)?',
+            # Hurdle rate of X%
+            r'hurdle\s*(?:rate)?(?:\s*of)?[:\s]*([\d.]+)\s*%',
+            # Preferred return patterns
             r'preferred\s*return[:\s]*([\d.]+)\s*%',
+            r'pref(?:erred)?\s*(?:return)?[:\s]*([\d.]+)\s*%',
+            r'([\d.]+)\s*%\s*pref(?:erred)?(?:\s*return)?',
+            # Promote threshold patterns - "promote above 6%" means 6% is the pref
+            r'promote\s*(?:above|over|after)[:\s]*([\d.]+)\s*%',
+            r'([\d.]+)\s*%\s*(?:before|until)\s*promote',
+            # General achieve IRR patterns
             r'(?:achieve\s*)?(?:an\s*)?IRR\s*(?:equal\s*to\s*)?([\d.]+)\s*(?:percent|%)',
         ]
         for pattern in pref_patterns:
@@ -1105,7 +1119,8 @@ class OMParser:
                 pref = self._safe_float(match.group(1))
                 if pref:
                     pref_val = pref if pref <= 1 else pref / 100
-                    if 0 <= pref_val <= 0.20:
+                    # Pref return is typically 4-12%
+                    if 0.04 <= pref_val <= 0.15:
                         terms.preferred_return = pref_val
                         break
 

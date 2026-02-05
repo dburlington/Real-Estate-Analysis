@@ -381,6 +381,71 @@ def display_fee_summary(console, analysis: OMAnalysis):
         print()
 
 
+def display_deal_terms(console, analysis: OMAnalysis):
+    """Display deal terms including returns structure"""
+    fin = analysis.financials
+    terms = analysis.deal_terms
+
+    # Check if there's relevant data to show
+    has_data = any([
+        fin.irr_projected, fin.cash_on_cash_return, fin.equity_multiple,
+        terms.preferred_return, terms.profit_split, terms.hold_period_years,
+        terms.loan_to_value, terms.interest_rate
+    ])
+
+    if not has_data:
+        return
+
+    if console:
+        table = Table(title="Deal Terms & Returns", box=box.ROUNDED)
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", style="white")
+
+        # Returns section
+        if fin.irr_projected:
+            table.add_row("Projected IRR", f"{fin.irr_projected:.1%}")
+        if fin.cash_on_cash_return:
+            table.add_row("Cash-on-Cash Return", f"{fin.cash_on_cash_return:.1%}")
+        if fin.equity_multiple:
+            table.add_row("Equity Multiple", f"{fin.equity_multiple:.2f}x")
+        if terms.preferred_return:
+            table.add_row("Preferred Return (Hurdle)", f"{terms.preferred_return:.1%}")
+
+        # Deal structure
+        if terms.profit_split:
+            table.add_row("Profit Split (LP/GP)", terms.profit_split)
+        if terms.hold_period_years:
+            table.add_row("Hold Period", f"{terms.hold_period_years} years")
+        if terms.loan_to_value:
+            table.add_row("Loan-to-Value", f"{terms.loan_to_value:.1%}")
+        if terms.interest_rate:
+            table.add_row("Interest Rate", f"{terms.interest_rate:.2%}")
+        if terms.minimum_investment:
+            table.add_row("Minimum Investment", f"${terms.minimum_investment:,.0f}")
+
+        console.print(table)
+        console.print()
+    else:
+        print("--- Deal Terms & Returns ---")
+        if fin.irr_projected:
+            print(f"Projected IRR: {fin.irr_projected:.1%}")
+        if fin.cash_on_cash_return:
+            print(f"Cash-on-Cash Return: {fin.cash_on_cash_return:.1%}")
+        if fin.equity_multiple:
+            print(f"Equity Multiple: {fin.equity_multiple:.2f}x")
+        if terms.preferred_return:
+            print(f"Preferred Return (Hurdle): {terms.preferred_return:.1%}")
+        if terms.profit_split:
+            print(f"Profit Split (LP/GP): {terms.profit_split}")
+        if terms.hold_period_years:
+            print(f"Hold Period: {terms.hold_period_years} years")
+        if terms.loan_to_value:
+            print(f"Loan-to-Value: {terms.loan_to_value:.1%}")
+        if terms.interest_rate:
+            print(f"Interest Rate: {terms.interest_rate:.2%}")
+        print()
+
+
 def display_findings(console, findings: list[Finding], title: str, style: str):
     """Display findings (pros, cons, or red flags)"""
     if not findings:
@@ -633,6 +698,7 @@ def main():
 
             display_property_summary(console, analysis)
             display_financial_summary(console, analysis)
+            display_deal_terms(console, analysis)
             display_fee_summary(console, analysis)
             display_market_data(console, analysis)
             display_external_context(console, analysis)
