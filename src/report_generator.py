@@ -343,37 +343,49 @@ class PDFReportGenerator:
             ))
             elements.append(Spacer(1, 10))
 
-        # ===== ROW 2: Returns + Deal Terms side by side =====
-        # Returns details (left column)
-        ret_rows = []
+        # ===== ROW 2: Returns (as prominent text) =====
+        returns_items = []
         if fin.irr_projected:
-            ret_rows.append(['Target IRR', f"{fin.irr_projected:.1%}"])
-        if fin.equity_multiple:
-            ret_rows.append(['Equity Multiple', f"{fin.equity_multiple:.2f}x"])
+            returns_items.append(f"<b>Target IRR:</b> {fin.irr_projected:.1%}")
         if fin.cash_on_cash_return:
-            ret_rows.append(['Cash-on-Cash', f"{fin.cash_on_cash_return:.1%}"])
+            returns_items.append(f"<b>Cash-on-Cash:</b> {fin.cash_on_cash_return:.1%}")
+        if fin.equity_multiple:
+            returns_items.append(f"<b>Equity Multiple:</b> {fin.equity_multiple:.2f}x")
         if terms.preferred_return:
-            ret_rows.append(['Pref Return', f"{terms.preferred_return:.1%}"])
+            returns_items.append(f"<b>Pref Return:</b> {terms.preferred_return:.1%}")
 
-        # Deal terms (right column)
-        deal_rows = []
-        if terms.loan_to_value:
-            deal_rows.append(['LTV', f"{terms.loan_to_value:.1%}"])
-        if terms.interest_rate:
-            deal_rows.append(['Rate', f"{terms.interest_rate:.2%}"])
-        if terms.hold_period_years:
-            deal_rows.append(['Hold', f"{terms.hold_period_years} yrs"])
-        if terms.minimum_investment:
-            deal_rows.append(['Min Invest', f"${terms.minimum_investment:,.0f}"])
-        if terms.profit_split:
-            deal_rows.append(['Split (LP/GP)', terms.profit_split])
-
-        if ret_rows or deal_rows:
-            elements.append(self._build_two_column_section(
-                "RETURNS", ret_rows,
-                "DEAL TERMS", deal_rows
+        if returns_items:
+            elements.append(Paragraph("RETURNS", self.styles['SubsectionHeader']))
+            returns_text = "    |    ".join(returns_items)
+            elements.append(Paragraph(
+                returns_text,
+                ParagraphStyle('ReturnsRow', parent=self.styles['Normal'],
+                              fontSize=10, textColor=self.COLORS['text'],
+                              spaceAfter=8)
             ))
-            elements.append(Spacer(1, 10))
+
+        # ===== ROW 3: Deal Terms =====
+        deal_items = []
+        if terms.loan_to_value:
+            deal_items.append(f"<b>LTV:</b> {terms.loan_to_value:.1%}")
+        if terms.interest_rate:
+            deal_items.append(f"<b>Rate:</b> {terms.interest_rate:.2%}")
+        if terms.hold_period_years:
+            deal_items.append(f"<b>Hold:</b> {terms.hold_period_years} yrs")
+        if terms.minimum_investment:
+            deal_items.append(f"<b>Min Invest:</b> ${terms.minimum_investment:,.0f}")
+        if terms.profit_split:
+            deal_items.append(f"<b>Split:</b> {terms.profit_split}")
+
+        if deal_items:
+            elements.append(Paragraph("DEAL TERMS", self.styles['SubsectionHeader']))
+            deal_text = "    |    ".join(deal_items)
+            elements.append(Paragraph(
+                deal_text,
+                ParagraphStyle('DealRow', parent=self.styles['Normal'],
+                              fontSize=9, textColor=self.COLORS['text'],
+                              spaceAfter=8)
+            ))
 
         # ===== ROW 3: Fees (single row, compact) =====
         fee_items = []
