@@ -411,9 +411,10 @@ class PDFReportGenerator:
         """Build a two-column section with headers and data"""
         # Create mini tables for each column
         def make_mini_table(title: str, data: list) -> list:
+            # Header row must have 2 elements to match data rows (for proper SPAN)
             rows = [[Paragraph(f'<b>{title}</b>',
                               ParagraphStyle('MiniHeader', parent=self.styles['Normal'],
-                                            fontSize=10, textColor=self.COLORS['primary']))]]
+                                            fontSize=10, textColor=self.COLORS['primary'])), '']]
             for label, value in data:
                 rows.append([
                     Paragraph(f'{label}:', ParagraphStyle('MiniLabel', parent=self.styles['Normal'],
@@ -423,8 +424,8 @@ class PDFReportGenerator:
                 ])
             return rows
 
-        left_rows = make_mini_table(left_title, left_data) if left_data else [['']]
-        right_rows = make_mini_table(right_title, right_data) if right_data else [['']]
+        left_rows = make_mini_table(left_title, left_data) if left_data else [['', '']]
+        right_rows = make_mini_table(right_title, right_data) if right_data else [['', '']]
 
         # Build individual tables
         left_table = Table(left_rows, colWidths=[1.2 * inch, 1.8 * inch]) if left_data else None
@@ -435,14 +436,14 @@ class PDFReportGenerator:
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
                 ('TOPPADDING', (0, 0), (-1, -1), 2),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-                ('SPAN', (0, 0), (-1, 0)),  # Header spans columns
+                ('SPAN', (0, 0), (1, 0)),  # Header spans both columns
             ]))
         if right_table:
             right_table.setStyle(TableStyle([
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
                 ('TOPPADDING', (0, 0), (-1, -1), 2),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-                ('SPAN', (0, 0), (-1, 0)),  # Header spans columns
+                ('SPAN', (0, 0), (1, 0)),  # Header spans both columns
             ]))
 
         # Combine into outer table
