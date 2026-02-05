@@ -962,13 +962,14 @@ class OMParser:
             if 0.1 <= exp_ratio_val <= 0.9:  # Sanity check
                 financials.expense_ratio = exp_ratio_val
 
-        # Cash on Cash - look for "Proforma Average Annual Cash on Cash 7.7%"
+        # Cash on Cash - look for "Cash on Cash 7.7%" or "7.7% Cash on Cash"
         coc_patterns = [
-            r'(?:proforma\s*)?(?:average\s*)?(?:annual\s*)?cash[\s-]*on[\s-]*cash[:\s]*([\d.]+)\s*%?',
-            r'cash[\s-]*on[\s-]*cash(?:\s*return)?[:\s]*([\d.]+)\s*%?',
-            r'cash[\s-]*on[\s-]*cash[^\d]*([\d.]+)\s*%',  # More flexible
-            r'([\d.]+)\s*%\s*cash[\s-]*on[\s-]*cash',  # Value before label
-            r'coc[:\s]*([\d.]+)\s*%?',  # Abbreviated
+            # Value before label at start of string/line (check FIRST - most specific)
+            r'(?:^|\n)\s*(\d+\.?\d*)\s*%\s*(?:average\s*)?(?:annual\s*)?cash[\s-]*on[\s-]*cash',
+            # Label with explicit separator
+            r'cash[\s-]*on[\s-]*cash(?:\s*return)?\s*[:=]\s*(\d+\.?\d*)\s*%',
+            # Label followed directly by value
+            r'cash[\s-]*on[\s-]*cash\s+(\d+\.?\d*)\s*%',
         ]
         for pattern in coc_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
@@ -976,20 +977,22 @@ class OMParser:
                 coc = self._safe_float(match.group(1))
                 if coc:
                     coc_val = coc if coc <= 1 else coc / 100
-                    if 0 <= coc_val <= 0.5:
+                    if 0.02 <= coc_val <= 0.25:
                         financials.cash_on_cash_return = coc_val
                         break
 
-        # IRR - look for "Proforma Net IRR 15.2%" or "Total IRR 15.2%"
+        # IRR - look for "Total IRR 15.2%" or "15.2% Total IRR"
         irr_patterns = [
-            r'(?:total\s*)?(?:proforma\s*)?(?:net\s*)?irr[:\s]*([\d.]+)\s*%?',
-            r'(?:net\s*)?irr(?:\s*\(\d+\))?[:\s]*([\d.]+)\s*%?',
-            r'internal\s*rate\s*of\s*return[:\s]*([\d.]+)\s*%?',
-            r'irr[^\d]*([\d.]+)\s*%',  # More flexible
-            r'([\d.]+)\s*%\s*irr',  # Value before label
-            r'levered\s*irr[:\s]*([\d.]+)\s*%?',
-            r'target\s*irr[:\s]*([\d.]+)\s*%?',
-            r'projected\s*irr[:\s]*([\d.]+)\s*%?',
+            # Prefixed IRR with explicit separator (highest priority)
+            r'(?:total|net|proforma|levered|target|projected)\s+irr\s*[:=]\s*(\d+\.?\d*)\s*%',
+            # Prefixed IRR followed directly by value (common format)
+            r'(?:total|net|proforma|levered|target|projected)\s+irr\s+(\d+\.?\d*)\s*%',
+            # Just IRR with separator
+            r'\birr\s*[:=]\s*(\d+\.?\d*)\s*%',
+            # Internal rate of return
+            r'internal\s*rate\s*of\s*return\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # Value before "Total/Net IRR" at end of string
+            r'(\d+\.?\d*)\s*%\s*(?:total|net)\s+irr\s*$',
         ]
         for pattern in irr_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
@@ -997,7 +1000,7 @@ class OMParser:
                 irr = self._safe_float(match.group(1))
                 if irr:
                     irr_val = irr if irr <= 1 else irr / 100
-                    if 0 <= irr_val <= 0.5:
+                    if 0.05 <= irr_val <= 0.35:
                         financials.irr_projected = irr_val
                         break
 
