@@ -983,28 +983,34 @@ class OMParser:
 
         # IRR - look for "Total IRR 15.2%", "Target IRR 22%", etc.
         # IMPORTANT: Prioritize "Total/Net/Proforma/Target IRR" over plain "IRR" to avoid matching IRR hurdles
+        # Note: \d* after IRR handles footnote superscripts like "IRR12" or "IRR^12" which get extracted as "IRR12"
         irr_patterns = [
-            # Total/Net/Target IRR - these are the actual projected returns (highest priority)
-            r'(?:total|net|target)\s+irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
-            r'proforma\s+(?:net\s+)?irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # Proforma Net IRR (with optional footnote number) - highest priority for projected returns
+            r'proforma\s+(?:net\s+)?irr\d*\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # Total/Net/Target IRR - these are the actual projected returns
+            r'(?:total|net|target)\s+irr\d*\s*[:=]?\s*(\d+\.?\d*)\s*%',
             # Levered/Projected/Expected/Blended/LP/Investor/Unleveraged IRR
-            r'(?:levered|projected|expected|estimated|blended|lp|investor|unlevered|unleveraged|deal|project|sponsor)\s+irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            r'(?:levered|projected|expected|estimated|blended|lp|investor|unlevered|unleveraged|deal|project|sponsor|series)\s+(?:investor\s+)?(?:net\s+)?irr\d*\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # "Series Investor Net Returns" section followed by "Proforma Net IRR"
+            r'(?:investor\s+)?(?:net\s+)?returns?\s*[\r\n]+\s*proforma\s+(?:net\s+)?irr\d*\s*(\d+\.?\d*)\s*%',
             # Value before "Total/Net/Target IRR"
             r'(\d+\.?\d*)\s*%\s*(?:total|net|target|projected|expected)\s+irr',
-            # Internal rate of return (full phrase)
-            r'internal\s*rate\s*of\s*return\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # Internal rate of return (full phrase) - NOT hurdle
+            r'internal\s+rate\s+of\s+return[^h]*?[:=]?\s*(\d+\.?\d*)\s*%',
             # IRR with parenthetical qualifier - "IRR (Projected): 15%", "IRR (Target): 18%"
             r'\birr\s*\([^)]+\)\s*[:=]?\s*(\d+\.?\d*)\s*%',
             # "IRR of 15.2%" format
-            r'\birr\s+of\s+(\d+\.?\d*)\s*%',
+            r'\birr\d*\s+of\s+(\d+\.?\d*)\s*%',
             # Yield patterns common in industrial/commercial OMs
-            r'(?:unleveraged|unlevered|leveraged|levered|project|deal)\s+yield\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            r'(?:unleveraged|unlevered|leveraged|levered|project|deal)\s+yield\d*\s*[:=]?\s*(\d+\.?\d*)\s*%',
             # Annual/annualized return patterns
             r'(?:annual|annualized|projected|target)\s+return\s*[:=]?\s*(\d+\.?\d*)\s*%',
-            # IRR with colon/equals - match values 8% and above (lowered from 10%)
+            # IRR with footnote number then colon/equals - "IRR12: 15.2%"
+            r'\birr\d+\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # IRR with colon/equals (no footnote)
             r'\birr\s*[:=]\s*(\d+\.?\d*)\s*%',
             # IRR with dash separator - "IRR - 15.2%"
-            r'\birr\s*[-–—]\s*(\d+\.?\d*)\s*%',
+            r'\birr\d*\s*[-–—]\s*(\d+\.?\d*)\s*%',
             # IRR followed by space and value (no colon) - e.g., "IRR 15.2%"
             r'\birr\s+(\d+\.?\d*)\s*%',
             # Value before plain "IRR"
