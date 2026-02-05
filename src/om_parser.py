@@ -987,15 +987,21 @@ class OMParser:
             # Total/Net/Target IRR - these are the actual projected returns (highest priority)
             r'(?:total|net|target)\s+irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
             r'proforma\s+(?:net\s+)?irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
-            # Levered/Projected/Expected IRR
-            r'(?:levered|projected|expected|estimated)\s+irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # Levered/Projected/Expected/Blended/LP/Investor IRR
+            r'(?:levered|projected|expected|estimated|blended|lp|investor|unlevered)\s+irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
             # Value before "Total/Net/Target IRR"
             r'(\d+\.?\d*)\s*%\s*(?:total|net|target|projected|expected)\s+irr',
             # Internal rate of return (full phrase)
             r'internal\s*rate\s*of\s*return\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # IRR with parenthetical qualifier - "IRR (Projected): 15%", "IRR (Target): 18%"
+            r'\birr\s*\([^)]+\)\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # "IRR of 15.2%" format
+            r'\birr\s+of\s+(\d+\.?\d*)\s*%',
             # IRR with colon/equals - only match values in projected IRR range (>10%)
             # This avoids hurdle rates which are typically 4-8%
             r'\birr\s*[:=]\s*(\d{2}\.?\d*)\s*%',
+            # IRR with dash separator - "IRR - 15.2%"
+            r'\birr\s*[-–—]\s*(\d{2}\.?\d*)\s*%',
             # IRR followed by space and value (no colon) - e.g., "IRR 15.2%"
             r'\birr\s+(\d{2}\.?\d*)\s*%',
             # Value before plain "IRR"
