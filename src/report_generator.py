@@ -286,7 +286,31 @@ class PDFReportGenerator:
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ]))
         elements.append(outer_table)
-        elements.append(Spacer(1, 15))
+        elements.append(Spacer(1, 10))
+
+        # KEY RETURNS - prominent display right under score
+        fin = analysis.financials
+        terms = analysis.deal_terms
+        key_returns = []
+        if fin.irr_projected:
+            key_returns.append(f"IRR: {fin.irr_projected:.1%}")
+        if fin.cash_on_cash_return:
+            key_returns.append(f"CoC: {fin.cash_on_cash_return:.1%}")
+        if fin.equity_multiple:
+            key_returns.append(f"EM: {fin.equity_multiple:.2f}x")
+        if terms.preferred_return:
+            key_returns.append(f"Pref: {terms.preferred_return:.1%}")
+
+        if key_returns:
+            returns_text = "  •  ".join(key_returns)
+            elements.append(Paragraph(
+                f'<b>{returns_text}</b>',
+                ParagraphStyle('KeyReturns', parent=self.styles['Normal'],
+                              fontSize=12, textColor=self.COLORS['primary'],
+                              alignment=TA_CENTER, spaceAfter=10)
+            ))
+
+        elements.append(Spacer(1, 5))
 
         return elements
 

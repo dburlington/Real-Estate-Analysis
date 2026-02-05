@@ -996,6 +996,8 @@ class OMParser:
             # IRR with colon/equals - only match values in projected IRR range (>10%)
             # This avoids hurdle rates which are typically 4-8%
             r'\birr\s*[:=]\s*(\d{2}\.?\d*)\s*%',
+            # IRR followed by space and value (no colon) - e.g., "IRR 15.2%"
+            r'\birr\s+(\d{2}\.?\d*)\s*%',
             # Value before plain "IRR"
             r'(\d{2}\.?\d*)\s*%\s*\birr\b',
         ]
