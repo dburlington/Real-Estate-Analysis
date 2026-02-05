@@ -981,18 +981,21 @@ class OMParser:
                         financials.cash_on_cash_return = coc_val
                         break
 
-        # IRR - look for "Total IRR 15.2%" or "15.2% Total IRR"
+        # IRR - look for "Total IRR 15.2%" or "Proforma Net IRR 15.2%"
+        # IMPORTANT: Prioritize "Total/Net/Proforma IRR" over plain "IRR" to avoid matching IRR hurdles
         irr_patterns = [
-            # Prefixed IRR with explicit separator (highest priority)
-            r'(?:total|net|proforma|levered|target|projected)\s+irr\s*[:=]\s*(\d+\.?\d*)\s*%',
-            # Prefixed IRR followed directly by value (common format)
-            r'(?:total|net|proforma|levered|target|projected)\s+irr\s+(\d+\.?\d*)\s*%',
-            # Just IRR with separator
-            r'\birr\s*[:=]\s*(\d+\.?\d*)\s*%',
-            # Internal rate of return
-            r'internal\s*rate\s*of\s*return\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # Total/Net IRR - these are the actual projected returns (highest priority)
+            r'(?:total|net)\s+irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            r'proforma\s+(?:net\s+)?irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # Levered/Projected IRR
+            r'(?:levered|projected)\s+irr\s*[:=]?\s*(\d+\.?\d*)\s*%',
             # Value before "Total/Net IRR" at end of string
             r'(\d+\.?\d*)\s*%\s*(?:total|net)\s+irr\s*$',
+            # Internal rate of return (full phrase)
+            r'internal\s*rate\s*of\s*return\s*[:=]?\s*(\d+\.?\d*)\s*%',
+            # Plain "IRR:" only as last resort (may be hurdle rate)
+            # Commented out to avoid matching IRR hurdles
+            # r'\birr\s*[:=]\s*(\d+\.?\d*)\s*%',
         ]
         for pattern in irr_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
@@ -1000,7 +1003,8 @@ class OMParser:
                 irr = self._safe_float(match.group(1))
                 if irr:
                     irr_val = irr if irr <= 1 else irr / 100
-                    if 0.05 <= irr_val <= 0.35:
+                    # IRR typically 10-25% for real estate
+                    if 0.08 <= irr_val <= 0.35:
                         financials.irr_projected = irr_val
                         break
 
