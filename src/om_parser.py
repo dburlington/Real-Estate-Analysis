@@ -1331,12 +1331,26 @@ class OMParser:
             # "20% carried interest once investors receive X%"
             (r'(\d+)\s*%\s*(?:carried\s*interest|promote)\s+(?:above|after|once)[^.]*?(\d+(?:\.\d+)?)\s*%',
              1, 2),
+            # "Sponsor/Manager receives 20% of distributable cash/profits after hurdle"
+            (r'(?:sponsor|manager|gp)\s+(?:shall\s+)?receive[s]?\s+(\d+)\s*%\s+(?:of\s+)?(?:distributable|excess|remaining)',
+             1, None),
+            # "Carried Interest: 20%" or "Promote: 20%" (standalone, no hurdle in sentence)
+            (r'(?:carried\s*interest|promote|performance\s*(?:fee|allocation))[:\s]+(\d+)\s*%',
+             1, None),
+            # "20% carried interest" or "20% promote" standalone
+            (r'(\d+)\s*%\s+(?:carried\s*interest|promote|performance\s*fee)',
+             1, None),
         ]
         seen = set()
-        for pattern, promote_idx, hurdle_idx in promote_patterns:
+        for pattern_tuple in promote_patterns:
+            pattern = pattern_tuple[0]
+            promote_idx = pattern_tuple[1]
+            hurdle_idx = pattern_tuple[2] if len(pattern_tuple) > 2 else None
             for match in re.finditer(pattern, text, re.IGNORECASE):
                 promote_pct = self._safe_float(match.group(promote_idx))
-                hurdle_pct = self._safe_float(match.group(hurdle_idx)) if hurdle_idx <= match.lastindex else None
+                hurdle_pct = None
+                if hurdle_idx is not None and hurdle_idx <= match.lastindex:
+                    hurdle_pct = self._safe_float(match.group(hurdle_idx))
                 if promote_pct and 5 <= promote_pct <= 50:
                     hurdle_val = (hurdle_pct / 100) if hurdle_pct and hurdle_pct < 50 else None
                     key = (round(promote_pct), round(hurdle_pct) if hurdle_pct else None)
@@ -1344,7 +1358,23 @@ class OMParser:
                         seen.add(key)
                         promote_candidates.append((promote_pct / 100, hurdle_val, match.group(0).strip()))
 
+        # If we found promote but no hurdle, try to link with preferred return
+        if promote_candidates and promote_candidates[0][1] is None:
+            # Use preferred return as the hurdle if available
+            pref_return = terms.preferred_return if 'terms' in dir() else None
+            if pref_return is None:
+                # Try to extract from text
+                pref_match = re.search(r'(?:preferred\s*return|pref|irr\s*hurdle)[:\s]+(\d+(?:\.\d+)?)\s*%', text, re.IGNORECASE)
+                if pref_match:
+                    pref_return = self._safe_float(pref_match.group(1))
+                    if pref_return:
+                        pref_return = pref_return / 100 if pref_return > 1 else pref_return
+            if pref_return and 0.04 <= pref_return <= 0.15:
+                # Update candidates with the preferred return as hurdle
+                promote_candidates = [(p, pref_return if h is None else h, l) for p, h, l in promote_candidates]
+
         # Sort by hurdle ascending (Tier 1 = lower hurdle, then higher)
+        promote_candidates.sort(key=lambda x: x[1] if x[1] is not None else 0)
         promote_candidates.sort(key=lambda x: x[1] if x[1] is not None else 0)
 
         if promote_candidates:
