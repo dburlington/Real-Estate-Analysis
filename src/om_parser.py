@@ -1340,6 +1340,15 @@ class OMParser:
             # "20% carried interest" or "20% promote" standalone
             (r'(\d+)\s*%\s+(?:carried\s*interest|promote|performance\s*fee)',
              1, None),
+            # Waterfall: "80% to investors/members and 20% to manager/sponsor/GP"
+            (r'(\d+)\s*%?\s*(?:\([^)]*\))?\s*to\s+(?:the\s+)?(?:series\s*)?(?:member|investor|lp)s?\s+and\s+(\d+)\s*%?\s*(?:\([^)]*\))?\s*to\s+(?:the\s+)?(?:manager|sponsor|gp|managing\s*member)',
+             2, None),
+            # Written form: "eighty percent (80%) to the Series Member and twenty percent (20%) to the Manager"
+            (r'(?:eighty|seventy|sixty|fifty)\s*percent\s*\((\d+)%?\)\s*to\s+(?:the\s+)?(?:series\s*)?(?:member|investor)s?\s*and\s*(?:twenty|thirty|forty|fifty)\s*percent\s*\((\d+)%?\)\s*to\s+(?:the\s+)?(?:manager|sponsor|managing)',
+             2, None),
+            # "twenty percent (20%) to the Manager" after waterfall context
+            (r'(?:twenty|thirty|fifteen|twenty-five)\s*percent\s*\((\d+)%?\)\s*to\s+(?:the\s+)?(?:manager|sponsor|gp|managing)',
+             1, None),
         ]
         seen = set()
         for pattern_tuple in promote_patterns:
@@ -1358,19 +1367,28 @@ class OMParser:
                         seen.add(key)
                         promote_candidates.append((promote_pct / 100, hurdle_val, match.group(0).strip()))
 
-        # If we found promote but no hurdle, try to link with preferred return
+        # If we found promote but no hurdle, try to link with preferred return / IRR hurdle
         if promote_candidates and promote_candidates[0][1] is None:
-            # Use preferred return as the hurdle if available
-            pref_return = terms.preferred_return if 'terms' in dir() else None
-            if pref_return is None:
-                # Try to extract from text
-                pref_match = re.search(r'(?:preferred\s*return|pref|irr\s*hurdle)[:\s]+(\d+(?:\.\d+)?)\s*%', text, re.IGNORECASE)
+            pref_return = None
+            # Try multiple patterns for hurdle rate
+            hurdle_patterns = [
+                r'(?:preferred\s*return|pref(?:erred)?)[:\s]+(\d+(?:\.\d+)?)\s*%',
+                r'irr\s*(?:hurdle|equal\s*to)[:\s]*(?:\w+\s+percent\s*\()?(\d+(?:\.\d+)?)\s*%?\)?',
+                r'(?:achieve|receive)\s+(?:an?\s+)?irr\s+(?:equal\s+to\s+)?(?:\w+\s+percent\s*\()?(\d+(?:\.\d+)?)\s*%?\)?',
+                r'hurdle[:\s]+(\d+(?:\.\d+)?)\s*%',
+                r'(\d+(?:\.\d+)?)\s*%\s*(?:irr\s*)?hurdle',
+            ]
+            for pattern in hurdle_patterns:
+                pref_match = re.search(pattern, text, re.IGNORECASE)
                 if pref_match:
                     pref_return = self._safe_float(pref_match.group(1))
                     if pref_return:
                         pref_return = pref_return / 100 if pref_return > 1 else pref_return
-            if pref_return and 0.04 <= pref_return <= 0.15:
-                # Update candidates with the preferred return as hurdle
+                    if pref_return and 0.04 <= pref_return <= 0.15:
+                        break
+                    pref_return = None
+            if pref_return:
+                # Update candidates with the hurdle
                 promote_candidates = [(p, pref_return if h is None else h, l) for p, h, l in promote_candidates]
 
         # Sort by hurdle ascending (Tier 1 = lower hurdle, then higher)
