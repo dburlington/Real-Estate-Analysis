@@ -331,7 +331,8 @@ def display_fee_summary(console, analysis: OMAnalysis):
     has_fees = any([
         fees.acquisition_fee, fees.asset_management_fee,
         fees.property_management_fee, fees.construction_management_fee,
-        fees.disposition_fee, fees.refinance_fee
+        fees.disposition_fee, fees.refinance_fee,
+        fees.promote_tier_1_pct
     ])
 
     if not has_fees:
@@ -356,6 +357,22 @@ def display_fee_summary(console, analysis: OMAnalysis):
         if fees.refinance_fee:
             table.add_row("Refinance Fee", f"{fees.refinance_fee:.1%}", "0.25-1.0%")
 
+        # Promote / carried interest
+        if fees.promote_tier_1_pct is not None:
+            hurdle_str = f" (above {fees.promote_tier_1_hurdle:.0%} hurdle)" if fees.promote_tier_1_hurdle else ""
+            table.add_row(
+                "GP Promote (Tier 1)",
+                f"{fees.promote_tier_1_pct:.0%}{hurdle_str}",
+                "20% above 6-8% hurdle"
+            )
+        if fees.promote_tier_2_pct is not None:
+            hurdle_str = f" (above {fees.promote_tier_2_hurdle:.0%})" if fees.promote_tier_2_hurdle else ""
+            table.add_row(
+                "GP Promote (Tier 2)",
+                f"{fees.promote_tier_2_pct:.0%}{hurdle_str}",
+                "25-30% above higher hurdle"
+            )
+
         if fees.estimated_total_fees_over_hold:
             hold = analysis.deal_terms.hold_period_years or 5
             table.add_row(
@@ -376,6 +393,12 @@ def display_fee_summary(console, analysis: OMAnalysis):
             print(f"Property Management Fee: {fees.property_management_fee:.1%} (benchmark: 3-6%)")
         if fees.disposition_fee:
             print(f"Disposition Fee: {fees.disposition_fee:.1%} (benchmark: 0.5-1.5%)")
+        if fees.promote_tier_1_pct is not None:
+            hurdle_str = f" above {fees.promote_tier_1_hurdle:.0%} hurdle" if fees.promote_tier_1_hurdle else ""
+            print(f"GP Promote: {fees.promote_tier_1_pct:.0%}{hurdle_str} (benchmark: 20% above 6-8% hurdle)")
+        if fees.promote_tier_2_pct is not None:
+            hurdle_str = f" above {fees.promote_tier_2_hurdle:.0%}" if fees.promote_tier_2_hurdle else ""
+            print(f"GP Promote Tier 2: {fees.promote_tier_2_pct:.0%}{hurdle_str}")
         if fees.estimated_total_fees_over_hold:
             print(f"Est. Total Fees: {fees.estimated_total_fees_over_hold:.1%} (benchmark: 15-25%)")
         print()

@@ -103,9 +103,13 @@ class SponsorFees:
     disposition_fee: Optional[float] = None  # % of sale price
     refinance_fee: Optional[float] = None  # % of new loan amount
 
-    # Promote/Carried Interest (already captured in profit_split, but detail here)
-    promote_tier_1: Optional[str] = None  # e.g., "20% above 8% IRR"
-    promote_tier_2: Optional[str] = None  # e.g., "30% above 15% IRR"
+    # Promote/Carried Interest - structured data
+    promote_tier_1_pct: Optional[float] = None      # GP promote % (e.g., 0.20 for 20%)
+    promote_tier_1_hurdle: Optional[float] = None   # Hurdle rate (e.g., 0.08 for 8% IRR)
+    promote_tier_1_label: str = ""                  # Raw text, e.g. "20% above 8% IRR"
+    promote_tier_2_pct: Optional[float] = None      # Second tier promote %
+    promote_tier_2_hurdle: Optional[float] = None   # Second tier hurdle
+    promote_tier_2_label: str = ""                  # Raw text
 
     # Other fees
     investor_servicing_fee: Optional[float] = None  # Annual flat or %

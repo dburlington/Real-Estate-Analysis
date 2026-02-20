@@ -421,6 +421,9 @@ class PDFReportGenerator:
             fee_items.append(f"PM: {fees.property_management_fee:.1%}")
         if fees.disposition_fee:
             fee_items.append(f"Disp: {fees.disposition_fee:.1%}")
+        if fees.promote_tier_1_pct is not None:
+            hurdle_str = f">{fees.promote_tier_1_hurdle:.0%}" if fees.promote_tier_1_hurdle else ""
+            fee_items.append(f"Promote: {fees.promote_tier_1_pct:.0%}{hurdle_str}")
 
         if fee_items:
             fee_text = "  |  ".join(fee_items)
@@ -762,6 +765,12 @@ class PDFReportGenerator:
             data.append(['Construction Mgmt', f"{fees.construction_management_fee:.2%}"])
         if fees.disposition_fee:
             data.append(['Disposition Fee', f"{fees.disposition_fee:.2%}"])
+        if fees.promote_tier_1_pct is not None:
+            hurdle_str = f" (above {fees.promote_tier_1_hurdle:.0%} hurdle)" if fees.promote_tier_1_hurdle else ""
+            data.append(['GP Promote (Tier 1)', f"{fees.promote_tier_1_pct:.0%}{hurdle_str}"])
+        if fees.promote_tier_2_pct is not None:
+            hurdle_str = f" (above {fees.promote_tier_2_hurdle:.0%})" if fees.promote_tier_2_hurdle else ""
+            data.append(['GP Promote (Tier 2)', f"{fees.promote_tier_2_pct:.0%}{hurdle_str}"])
         if fees.estimated_total_fees_over_hold:
             data.append(['Total Est. Fees', f"{fees.estimated_total_fees_over_hold:.1%}"])
 
@@ -770,7 +779,8 @@ class PDFReportGenerator:
             elements.append(table)
             elements.append(Spacer(1, 6))
             elements.append(Paragraph(
-                "<i>Benchmarks: Acquisition 1%, Asset Mgmt 1.5%/yr, Property Mgmt 5%, Disposition 1%</i>",
+                "<i>Benchmarks: Acquisition 1%, Asset Mgmt 1.5%/yr, Property Mgmt 5%, Disposition 1%, "
+                "GP Promote 20% above 6-8% hurdle</i>",
                 ParagraphStyle('Note', parent=self.styles['Normal'],
                               fontSize=8, textColor=self.COLORS['muted'])
             ))

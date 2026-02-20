@@ -1310,19 +1310,51 @@ class OMParser:
         fin_fee = self._extract_number(text, self.PATTERNS['financing_fee'])
         fees.financing_fee = self._parse_fee_percentage(fin_fee)
 
-        # Look for promote/waterfall tiers
+        # Look for promote/waterfall tiers - extract structured promote % and hurdle %
+        # Collect all candidate (promote_pct, hurdle_pct, label) tuples across all patterns,
+        # then de-duplicate and sort by hurdle ascending (Tier 1 = lower hurdle)
+        promote_candidates = []
         promote_patterns = [
-            r'(\d+)\s*%\s*(?:promote|carried\s*interest|carry)\s*(?:above|after|over)\s*(\d+)\s*%\s*(?:irr|return)',
-            r'(?:promote|carried\s*interest|carry)[:\s]*(\d+)\s*%\s*(?:above|after)\s*(\d+)\s*%',
-            r'(\d+)\s*/\s*(\d+)\s*(?:split|waterfall)\s*(?:above|after)\s*(\d+)\s*%',
+            # "80/20 split above X%" or "Profit Split: 80/20 (LP/GP) above X%"
+            # GP gets the smaller of the two numbers; indices: 1=LP, 2=GP, 3=hurdle
+            (r'(?:profit\s*split[:\s]*)?(\d+)\s*/\s*(\d+)\s*(?:\(lp/gp\))?\s*(?:split|waterfall)?\s*(?:above|after)\s*(?:a\s+)?(\d+(?:\.\d+)?)\s*%',
+             2, 3),
+            # "20% promote/carry above X% IRR/return"
+            (r'(\d+)\s*%\s*(?:promote|carried\s*interest|carry|gp\s*promote)\s*(?:above|after|over|on)\s+(?:a\s+)?(\d+(?:\.\d+)?)\s*%\s*(?:irr|return|hurdle|pref)?',
+             1, 2),
+            # "promote/carry of 20% above X%"
+            (r'(?:promote|carried\s*interest|carry)[:\s]+(?:of\s+)?(\d+)\s*%\s*(?:above|after|over)\s+(\d+(?:\.\d+)?)\s*%',
+             1, 2),
+            # "GP receives 20% of profits above X% IRR"
+            (r'gp\s+receives?\s+(\d+)\s*%\s+(?:of\s+)?(?:profits?|proceeds?|upside)\s+(?:above|after|over)\s+(?:a\s+)?(\d+(?:\.\d+)?)\s*%',
+             1, 2),
+            # "20% carried interest once investors receive X%"
+            (r'(\d+)\s*%\s*(?:carried\s*interest|promote)\s+(?:above|after|once)[^.]*?(\d+(?:\.\d+)?)\s*%',
+             1, 2),
         ]
-        for pattern in promote_patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                if not fees.promote_tier_1:
-                    fees.promote_tier_1 = match.group(0).strip()
-                elif not fees.promote_tier_2:
-                    fees.promote_tier_2 = match.group(0).strip()
+        seen = set()
+        for pattern, promote_idx, hurdle_idx in promote_patterns:
+            for match in re.finditer(pattern, text, re.IGNORECASE):
+                promote_pct = self._safe_float(match.group(promote_idx))
+                hurdle_pct = self._safe_float(match.group(hurdle_idx)) if hurdle_idx <= match.lastindex else None
+                if promote_pct and 5 <= promote_pct <= 50:
+                    hurdle_val = (hurdle_pct / 100) if hurdle_pct and hurdle_pct < 50 else None
+                    key = (round(promote_pct), round(hurdle_pct) if hurdle_pct else None)
+                    if key not in seen:
+                        seen.add(key)
+                        promote_candidates.append((promote_pct / 100, hurdle_val, match.group(0).strip()))
+
+        # Sort by hurdle ascending (Tier 1 = lower hurdle, then higher)
+        promote_candidates.sort(key=lambda x: x[1] if x[1] is not None else 0)
+
+        if promote_candidates:
+            fees.promote_tier_1_pct = promote_candidates[0][0]
+            fees.promote_tier_1_hurdle = promote_candidates[0][1]
+            fees.promote_tier_1_label = promote_candidates[0][2]
+        if len(promote_candidates) > 1:
+            fees.promote_tier_2_pct = promote_candidates[1][0]
+            fees.promote_tier_2_hurdle = promote_candidates[1][1]
+            fees.promote_tier_2_label = promote_candidates[1][2]
 
         # Look for additional fee mentions
         other_fee_patterns = [

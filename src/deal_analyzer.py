@@ -107,6 +107,15 @@ class DealAnalyzer:
         'total_fees_market': 0.25,  # 25% - market standard
         'total_fees_high': 0.35,  # 35% - fee heavy
         'total_fees_red_flag': 0.45,  # 45% - excessive
+
+        # Promote/carried interest - GP share of profits above hurdle
+        'promote_market': 0.20,      # 20% - market standard (80/20 split)
+        'promote_high': 0.25,        # 25% - above market
+        'promote_red_flag': 0.35,    # 35%+ - GP-heavy
+        # Hurdle rates (preferred return threshold before promote kicks in)
+        'hurdle_low': 0.06,          # 6% - below market hurdle (GP-friendly)
+        'hurdle_market': 0.08,       # 8% - market standard
+        'hurdle_high': 0.10,         # 10%+ - investor-friendly
     }
 
     # Current market interest rate benchmark
@@ -985,6 +994,72 @@ class DealAnalyzer:
                     actual_value=f"{total_fee_estimate:.1%}",
                     benchmark_value=f"Market avg: {benchmarks['total_fees_market']:.0%}"
                 ))
+
+        # Promote / carried interest analysis
+        if fees.promote_tier_1_pct is not None:
+            promote = fees.promote_tier_1_pct
+            hurdle = fees.promote_tier_1_hurdle
+
+            hurdle_str = f"{hurdle:.0%} hurdle" if hurdle else "unspecified hurdle"
+            promote_str = f"{promote:.0%} promote above {hurdle_str}"
+
+            if promote >= benchmarks['promote_red_flag']:
+                analysis.red_flags.append(Finding(
+                    category="Fees",
+                    description="Excessive GP promote",
+                    details=f"GP promote of {promote:.0%} is well above market standard of {benchmarks['promote_market']:.0%}. "
+                            f"This significantly reduces LP net returns on upside.",
+                    risk_level=RiskLevel.HIGH,
+                    metric_name="GP Promote",
+                    actual_value=f"{promote:.0%}",
+                    benchmark_value=f"Market: {benchmarks['promote_market']:.0%}"
+                ))
+            elif promote > benchmarks['promote_high']:
+                analysis.cons.append(Finding(
+                    category="Fees",
+                    description="Above-market GP promote",
+                    details=f"GP promote of {promote:.0%} exceeds typical market rate of {benchmarks['promote_market']:.0%}. "
+                            f"Structure: {promote_str}.",
+                    risk_level=RiskLevel.MEDIUM,
+                    metric_name="GP Promote",
+                    actual_value=f"{promote:.0%}",
+                    benchmark_value=f"Market: {benchmarks['promote_market']:.0%}"
+                ))
+            else:
+                analysis.pros.append(Finding(
+                    category="Fees",
+                    description="Market-standard GP promote",
+                    details=f"GP promote of {promote:.0%} is at or below market standard. Structure: {promote_str}.",
+                    risk_level=RiskLevel.LOW,
+                    metric_name="GP Promote",
+                    actual_value=f"{promote:.0%}",
+                    benchmark_value=f"Market: {benchmarks['promote_market']:.0%}"
+                ))
+
+            # Evaluate hurdle rate separately
+            if hurdle is not None:
+                if hurdle < benchmarks['hurdle_low']:
+                    analysis.cons.append(Finding(
+                        category="Fees",
+                        description="Low promote hurdle rate",
+                        details=f"Promote kicks in after only {hurdle:.0%}, below market standard of {benchmarks['hurdle_market']:.0%}. "
+                                f"GP begins earning outsized profits before investors receive adequate returns.",
+                        risk_level=RiskLevel.MEDIUM,
+                        metric_name="Promote Hurdle",
+                        actual_value=f"{hurdle:.0%}",
+                        benchmark_value=f"Market: {benchmarks['hurdle_market']:.0%}"
+                    ))
+                elif hurdle >= benchmarks['hurdle_high']:
+                    analysis.pros.append(Finding(
+                        category="Fees",
+                        description="High promote hurdle rate",
+                        details=f"Hurdle rate of {hurdle:.0%} is above market standard of {benchmarks['hurdle_market']:.0%}, "
+                                f"meaning investors receive {hurdle:.0%} before GP earns promote.",
+                        risk_level=RiskLevel.LOW,
+                        metric_name="Promote Hurdle",
+                        actual_value=f"{hurdle:.0%}",
+                        benchmark_value=f"Market: {benchmarks['hurdle_market']:.0%}"
+                    ))
 
         # Check for fee disclosure issues
         has_any_fees = any([
