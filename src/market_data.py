@@ -3,6 +3,7 @@
 import os
 import json
 import time
+from datetime import datetime
 from typing import Optional
 from dataclasses import asdict
 import requests
@@ -18,8 +19,26 @@ class MarketDataFetcher:
     # Bureau of Labor Statistics API
     BLS_API_BASE = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 
+    # Federal Reserve Economic Data (FRED) - secondary source for state employment
+    FRED_API_BASE = "https://api.stlouisfed.org/fred/series/observations"
+
     # HUD Fair Market Rent API
     HUD_API_BASE = "https://www.huduser.gov/hudapi/public"
+
+    # BLS state FIPS codes for constructing series IDs
+    STATE_FIPS = {
+        'AL': '01', 'AK': '02', 'AZ': '04', 'AR': '05', 'CA': '06',
+        'CO': '08', 'CT': '09', 'DE': '10', 'DC': '11', 'FL': '12',
+        'GA': '13', 'HI': '15', 'ID': '16', 'IL': '17', 'IN': '18',
+        'IA': '19', 'KS': '20', 'KY': '21', 'LA': '22', 'ME': '23',
+        'MD': '24', 'MA': '25', 'MI': '26', 'MN': '27', 'MS': '28',
+        'MO': '29', 'MT': '30', 'NE': '31', 'NV': '32', 'NH': '33',
+        'NJ': '34', 'NM': '35', 'NY': '36', 'NC': '37', 'ND': '38',
+        'OH': '39', 'OK': '40', 'OR': '41', 'PA': '42', 'RI': '44',
+        'SC': '45', 'SD': '46', 'TN': '47', 'TX': '48', 'UT': '49',
+        'VT': '50', 'VA': '51', 'WA': '53', 'WV': '54', 'WI': '55',
+        'WY': '56',
+    }
 
     # Market benchmarks by property type (national averages)
     MARKET_BENCHMARKS = {
@@ -92,12 +111,26 @@ class MarketDataFetcher:
         'OH': 0.08, 'MI': 0.09, 'IL': 0.07, 'PA': 0.07,
     }
 
-    def __init__(self, census_api_key: Optional[str] = None, hud_api_key: Optional[str] = None):
-        """Initialize with optional API keys for enhanced data"""
+    def __init__(self, census_api_key: Optional[str] = None, hud_api_key: Optional[str] = None,
+                 bls_api_key: Optional[str] = None, fred_api_key: Optional[str] = None):
+        """Initialize with optional API keys for enhanced data.
+
+        BLS API key is free: https://data.bls.gov/registrationEngine/
+        Without a key: 500 req/day, 25 series/query, 10 yrs history.
+        With a key: 3000 req/day, 500 series/query, 20 yrs history.
+
+        FRED API key is free: https://fred.stlouisfed.org/docs/api/api_key.html
+        Used as secondary fallback for state employment data when BLS is unavailable.
+        """
         self.census_api_key = census_api_key or os.getenv('CENSUS_API_KEY')
         self.hud_api_key = hud_api_key or os.getenv('HUD_API_KEY')
+        self.bls_api_key = bls_api_key or os.getenv('BLS_API_KEY')
+        self.fred_api_key = fred_api_key or os.getenv('FRED_API_KEY')
         self.session = requests.Session()
-        self.session.headers.update({'User-Agent': 'RealEstateOMAnalyzer/1.0'})
+        self.session.headers.update({
+            'User-Agent': 'RealEstateOMAnalyzer/1.0',
+            'Content-Type': 'application/json',
+        })
 
     def fetch_market_data(
         self,
@@ -208,24 +241,178 @@ class MarketDataFetcher:
         return None
 
     def _fetch_employment_data(self, state: str) -> Optional[dict]:
-        """Fetch employment statistics"""
-        # State-level unemployment rates (recent estimates)
+        """Fetch real employment data: BLS API → FRED API → hardcoded fallback.
+
+        Priority order:
+          1. BLS public API v2 (most authoritative, direct source)
+          2. FRED API (republishes BLS data; different rate limits)
+          3. Hardcoded estimates (offline fallback)
+        """
+        bls_result = self._fetch_bls_employment(state)
+        if bls_result:
+            return bls_result
+
+        fred_result = self._fetch_fred_state_employment(state)
+        if fred_result:
+            return fred_result
+
+        return self._employment_data_fallback(state)
+
+    def _fetch_bls_employment(self, state: str) -> Optional[dict]:
+        """Call BLS public API v2 for state unemployment and employment."""
+        fips = self.STATE_FIPS.get(state.upper())
+        if not fips:
+            return None
+
+        # BLS series IDs
+        # LAU: Local Area Unemployment - state unemployment rate, seasonally adjusted
+        unemp_series = f"LASST{fips}0000000000003"
+        # SMS: State and Metro Area - total nonfarm employees, not seasonally adjusted
+        emp_series   = f"SMS{fips}000000000000001"
+
+        current_year = datetime.now().year
+        payload = {
+            "seriesid":  [unemp_series, emp_series],
+            "startyear": str(current_year - 1),
+            "endyear":   str(current_year),
+            "calculations": True,          # ask BLS to include net/pct changes
+        }
+        if self.bls_api_key:
+            payload["registrationkey"] = self.bls_api_key
+
+        try:
+            response = self.session.post(
+                self.BLS_API_BASE,
+                data=json.dumps(payload),
+                timeout=15,
+            )
+            response.raise_for_status()
+            body = response.json()
+
+            if body.get('status') != 'REQUEST_SUCCEEDED':
+                return None
+
+            result = {}
+            for series in body.get('Results', {}).get('series', []):
+                sid    = series['seriesID']
+                points = series.get('data', [])
+                if not points:
+                    continue
+
+                # BLS returns most-recent first
+                latest_val = float(points[0]['value'])
+
+                if sid == unemp_series:
+                    # Value is already a percentage, e.g. 3.8 → 0.038
+                    result['unemployment_rate'] = latest_val / 100
+                    result['unemployment_period'] = (
+                        f"{points[0].get('periodName', '')} {points[0].get('year', '')}".strip()
+                    )
+
+                elif sid == emp_series:
+                    # Calculate year-over-year % change using same month last year
+                    # BLS returns monthly data; index 12 = same month 12 months prior
+                    if len(points) >= 13:
+                        prior_val = float(points[12]['value'])
+                        if prior_val > 0:
+                            result['job_growth'] = (latest_val - prior_val) / prior_val
+                    # Also store raw level for context
+                    result['total_employment'] = latest_val  # in thousands
+
+            return result if result else None
+
+        except Exception:
+            return None
+
+    def _fetch_fred_state_employment(self, state: str) -> Optional[dict]:
+        """Fetch state employment data from FRED API (secondary source).
+
+        FRED republishes BLS state-level data using series like:
+          - {STATE}UR  State unemployment rate, e.g. TXUR, CAUR, FLUR
+          - {STATE}NA  State nonfarm employment (thousands), e.g. TXNA, CANA, FLNA
+        """
+        if not self.fred_api_key:
+            return None
+
+        state_upper = state.upper()
+        unemp_series = f"{state_upper}UR"
+        emp_series   = f"{state_upper}NA"
+
+        result = {}
+
+        unemp_data = self._fetch_fred_series_raw(unemp_series, limit=2)
+        if unemp_data:
+            result['unemployment_rate'] = unemp_data['value'] / 100
+            result['unemployment_period'] = unemp_data['date']
+
+        emp_data = self._fetch_fred_series_raw(emp_series, limit=13)
+        if emp_data and emp_data.get('previous') is not None:
+            prior = emp_data['previous']
+            current = emp_data['value']
+            if prior > 0:
+                result['job_growth'] = (current - prior) / prior
+
+        return result if result else None
+
+    def _fetch_fred_series_raw(self, series_id: str, limit: int = 2) -> Optional[dict]:
+        """Fetch the latest observations for a single FRED series.
+
+        Returns {'value': float, 'date': str, 'previous': float|None} or None on failure.
+        """
+        if not self.fred_api_key:
+            return None
+
+        try:
+            params = {
+                'series_id':  series_id,
+                'api_key':    self.fred_api_key,
+                'file_type':  'json',
+                'sort_order': 'desc',
+                'limit':      limit,
+            }
+            response = self.session.get(self.FRED_API_BASE, params=params, timeout=10)
+            if response.status_code != 200:
+                return None
+
+            data = response.json()
+            obs = data.get('observations', [])
+            # Skip any "." (missing) values
+            valid = [o for o in obs if o.get('value', '.') != '.']
+            if not valid:
+                return None
+
+            result: dict = {
+                'value': float(valid[0]['value']),
+                'date':  valid[0]['date'],
+            }
+            # The 13th observation (index 12) gives the same-month prior year for YoY
+            if len(valid) >= limit and limit >= 13:
+                result['previous'] = float(valid[limit - 1]['value'])
+            elif len(valid) >= 2:
+                result['previous'] = float(valid[1]['value'])
+
+            return result
+        except Exception:
+            return None
+
+    def _employment_data_fallback(self, state: str) -> dict:
+        """Hardcoded state employment estimates used when BLS API is unavailable."""
         unemployment_rates = {
             'CA': 0.048, 'NY': 0.044, 'TX': 0.042, 'FL': 0.032,
             'IL': 0.048, 'PA': 0.042, 'OH': 0.041, 'GA': 0.035,
             'NC': 0.036, 'MI': 0.044, 'AZ': 0.039, 'WA': 0.041,
             'MA': 0.037, 'TN': 0.034, 'CO': 0.035, 'NV': 0.052,
+            'SC': 0.033, 'VA': 0.032, 'MD': 0.034, 'MN': 0.033,
         }
-
         job_growth_rates = {
             'TX': 0.035, 'FL': 0.038, 'AZ': 0.032, 'NC': 0.028,
             'GA': 0.026, 'TN': 0.025, 'CO': 0.022, 'WA': 0.020,
+            'SC': 0.024, 'VA': 0.018, 'MD': 0.015, 'MN': 0.016,
             'CA': 0.015, 'NY': 0.012, 'IL': 0.010, 'OH': 0.012,
         }
-
         return {
             'unemployment_rate': unemployment_rates.get(state, 0.04),
-            'job_growth': job_growth_rates.get(state, 0.015)
+            'job_growth':        job_growth_rates.get(state, 0.015),
         }
 
     def _fetch_hud_fmr(self, state: str, zip_code: str) -> Optional[dict]:
